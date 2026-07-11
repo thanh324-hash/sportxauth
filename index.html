@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Teamspirit Korea - Custom Uniform Studio</title>
-<meta name="description" content="Teamspirit Korea custom uniform store">
+<title>Teamspirit Korea</title>
+<meta name="description" content="Teamspirit Korea">
 
 <style>:root{--black:#111;--line:#e8e8e8;--muted:#777;--red:#ff4242;--blue:#315bff}
 *{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,"Noto Sans KR",sans-serif;color:#111;background:#fff}a{text-decoration:none;color:inherit}button,input,textarea,select{font-family:inherit}button{cursor:pointer}.wrap{max-width:1440px;margin:auto;padding:0 28px}
@@ -28,7 +28,7 @@
   const $=s=>document.querySelector(s);
   const data=window.SITE_DATA||await fetch("/api/site").then(r=>r.json());
   const app=$("#app");
-  document.title=`${data.brand||"teamspirit"} - Custom Uniform Studio`;
+  document.title=data.brand||"teamspirit";
   const defaults=[
     ["custom","CUSTOM","Custom order uniforms and team identity design."],
     ["football-wear","FOOTBALL WEAR","Match kits, shorts, socks and football gear."],
