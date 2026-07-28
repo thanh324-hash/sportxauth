@@ -72,3 +72,11 @@ test('Zalo OA adapter verifies OA, protects webhook, normalizes events and sends
   const events=await request('/api/sync/events',{headers:auth});assert.equal(events.body.length,1);assert.equal(events.body[0].provider,'zalo');assert.equal(events.body[0].payload.senderName,'Khách Zalo')
   const sent=await request('/api/messages/send',{method:'POST',headers:auth,body:JSON.stringify({connectionId:connected.body.id,recipientId:'zalo-user-68',text:'BOT 68 trả lời Zalo'})});assert.equal(sent.status,200);assert.equal(sent.body.externalMessageId,'zalo-message-68')
 })
+test('tenant AI knowledge is isolated and produces grounded reviewable suggestions',async()=>{
+  const a=await register(7),b=await register(8),authA={authorization:`Bearer ${a.body.token}`},authB={authorization:`Bearer ${b.body.token}`}
+  const profile=await request('/api/ai-profile',{method:'PATCH',headers:authA,body:JSON.stringify({tone:'thân thiện',instructions:'Xưng shop và gọi tên khách.',safetyMode:'suggest'})});assert.equal(profile.status,200)
+  const document=await request('/api/ai/knowledge',{method:'POST',headers:authA,body:JSON.stringify({title:'Chính sách đổi trả áo',content:'Sản phẩm áo được đổi size trong vòng 7 ngày nếu còn nguyên tem và chưa qua sử dụng.',tags:['đổi trả','áo']})});assert.equal(document.status,201)
+  const own=await request('/api/ai/knowledge',{headers:authA}),other=await request('/api/ai/knowledge',{headers:authB});assert.equal(own.body.length,1);assert.equal(other.body.length,0)
+  const suggestion=await request('/api/ai/suggest',{method:'POST',headers:authA,body:JSON.stringify({customerName:'Lan',question:'Áo có được đổi size không?',messages:[{from:'customer',text:'Mình mặc không vừa'}]})});assert.equal(suggestion.status,200);assert.equal(suggestion.body.provider,'local-fallback');assert.equal(suggestion.body.requiresReview,true);assert.deepEqual(suggestion.body.sourceIds,[document.body.id]);assert.ok(suggestion.body.draft.includes('7 ngày'))
+  const noLeak=await request('/api/ai/suggest',{method:'POST',headers:authB,body:JSON.stringify({question:'Áo đổi size thế nào?'})});assert.equal(noLeak.body.sourceIds.length,0);assert.equal(noLeak.body.draft.includes('7 ngày'),false)
+})

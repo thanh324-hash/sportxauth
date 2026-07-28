@@ -3,6 +3,7 @@ import express from 'express'
 import { openDatabase, publicTenant, publicUser } from './database.mjs'
 import { createSession, decryptSecret, encryptSecret, hashPassword, readSession, verifyPassword } from './crypto.mjs'
 import { channelAdapters, publicAdapterCatalog } from './channels/registry.mjs'
+import { createSuggestion } from './ai.mjs'
 
 const id = prefix => `${prefix}_${crypto.randomUUID()}`
 const slugify = value => String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 48)
@@ -29,6 +30,7 @@ export function createApp(config) {
     } catch (error) { res.status(401).json({ error: error.message }) }
   }
   const ownerOnly = (req, res, next) => req.session.role === 'owner' ? next() : res.status(403).json({ error: 'Chỉ chủ cửa hàng được thực hiện thao tác này' })
+  const managerOrOwner=(req,res,next)=>['owner','manager'].includes(req.session.role)?next():res.status(403).json({error:'Bạn không có quyền chỉnh sửa cấu hình AI'})
 
   app.get('/health', (_, res) => res.json({ ok: true, service: 'BOT 68 Server', version: '0.2.0', database: 'sqlite' }))
   app.post('/api/auth/register', (req, res) => {
@@ -68,13 +70,18 @@ export function createApp(config) {
     const row = db.prepare('SELECT * FROM ai_profiles WHERE tenant_id = ?').get(req.session.tenantId)
     res.json({ businessName:row.business_name, tone:row.tone, instructions:row.instructions, safetyMode:row.safety_mode, updatedAt:row.updated_at })
   })
-  app.patch('/api/ai-profile', authenticate, (req, res) => {
+  app.patch('/api/ai-profile', authenticate, managerOrOwner, (req, res) => {
     const current = db.prepare('SELECT * FROM ai_profiles WHERE tenant_id = ?').get(req.session.tenantId)
     const value = { businessName:req.body.businessName ?? current.business_name, tone:req.body.tone ?? current.tone, instructions:req.body.instructions ?? current.instructions, safetyMode:req.body.safetyMode ?? current.safety_mode }
     if (!['suggest','supervised','automatic'].includes(value.safetyMode)) return res.status(400).json({ error:'Chế độ AI không hợp lệ' })
     db.prepare('UPDATE ai_profiles SET business_name=?,tone=?,instructions=?,safety_mode=?,updated_at=? WHERE tenant_id=?').run(value.businessName,value.tone,value.instructions,value.safetyMode,Date.now(),req.session.tenantId)
     res.json({ ok:true, ...value })
   })
+  app.get('/api/ai/knowledge',authenticate,(req,res)=>{const rows=db.prepare('SELECT * FROM ai_knowledge WHERE tenant_id=? ORDER BY updated_at DESC').all(req.session.tenantId);res.json(rows.map(publicKnowledge))})
+  app.post('/api/ai/knowledge',authenticate,managerOrOwner,(req,res)=>{const title=String(req.body?.title||'').trim(),content=String(req.body?.content||'').trim(),tags=Array.isArray(req.body?.tags)?req.body.tags.map(String).slice(0,20):[];if(!title||!content||content.length>50000)return res.status(400).json({error:'Tiêu đề hoặc nội dung tài liệu không hợp lệ'});const knowledgeId=id('know'),now=Date.now();db.prepare('INSERT INTO ai_knowledge(id,tenant_id,title,content,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?)').run(knowledgeId,req.session.tenantId,title,content,JSON.stringify(tags),now,now);res.status(201).json(publicKnowledge(db.prepare('SELECT * FROM ai_knowledge WHERE id=?').get(knowledgeId)))})
+  app.patch('/api/ai/knowledge/:knowledgeId',authenticate,managerOrOwner,(req,res)=>{const row=db.prepare('SELECT * FROM ai_knowledge WHERE id=? AND tenant_id=?').get(req.params.knowledgeId,req.session.tenantId);if(!row)return res.sendStatus(404);const title=String(req.body.title??row.title).trim(),content=String(req.body.content??row.content).trim(),tags=Array.isArray(req.body.tags)?req.body.tags.map(String).slice(0,20):JSON.parse(row.tags),enabled=req.body.enabled===undefined?row.enabled:(req.body.enabled?1:0);db.prepare('UPDATE ai_knowledge SET title=?,content=?,tags=?,enabled=?,updated_at=? WHERE id=? AND tenant_id=?').run(title,content,JSON.stringify(tags),enabled,Date.now(),row.id,req.session.tenantId);res.json(publicKnowledge(db.prepare('SELECT * FROM ai_knowledge WHERE id=?').get(row.id)))})
+  app.delete('/api/ai/knowledge/:knowledgeId',authenticate,managerOrOwner,(req,res)=>{const result=db.prepare('DELETE FROM ai_knowledge WHERE id=? AND tenant_id=?').run(req.params.knowledgeId,req.session.tenantId);res.status(result.changes?204:404).end()})
+  app.post('/api/ai/suggest',authenticate,async(req,res,next)=>{try{const question=String(req.body?.question||'').trim();if(!question||question.length>8000)return res.status(400).json({error:'Câu hỏi không hợp lệ'});const profileRow=db.prepare('SELECT * FROM ai_profiles WHERE tenant_id=?').get(req.session.tenantId),profile={businessName:profileRow.business_name,tone:profileRow.tone,instructions:profileRow.instructions,safetyMode:profileRow.safety_mode},documents=db.prepare('SELECT * FROM ai_knowledge WHERE tenant_id=? AND enabled=1').all(req.session.tenantId).map(publicKnowledge),result=await createSuggestion({profile,documents,question,customerName:String(req.body?.customerName||''),messages:Array.isArray(req.body?.messages)?req.body.messages.slice(-20):[],config});res.json(result)}catch(error){next(error)}})
   app.get('/api/channels', authenticate, (req, res) => {
     const rows = db.prepare('SELECT id,provider,external_id,display_name,status,created_at FROM channel_connections WHERE tenant_id=? ORDER BY created_at DESC').all(req.session.tenantId)
     res.json(rows.map(r=>({id:r.id,provider:r.provider,externalId:r.external_id,displayName:r.display_name,status:r.status,createdAt:r.created_at})))
@@ -218,3 +225,4 @@ export function createApp(config) {
 
 function escapeHtml(value){return String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]))}
 function oauthHtml(ok,message){return `<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>BOT 68</title><body style="margin:0;background:#08111f;color:#e9eef6;font:16px system-ui;display:grid;place-items:center;height:100vh"><main style="max-width:520px;text-align:center;padding:40px;border:1px solid #24344a;border-radius:18px;background:#0e1a2a"><div style="font-size:48px">${ok?'✓':'!'}</div><h1 style="color:${ok?'#48d795':'#ff7650'}">${ok?'Kết nối thành công':'Kết nối chưa hoàn tất'}</h1><p style="color:#9aa8ba;line-height:1.6">${message}</p><b>Bạn có thể đóng cửa sổ này.</b></main></body></html>`}
+function publicKnowledge(row){return {id:row.id,title:row.title,content:row.content,tags:JSON.parse(row.tags||'[]'),enabled:Boolean(row.enabled),createdAt:row.created_at,updatedAt:row.updated_at}}
