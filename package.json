@@ -1,0 +1,53 @@
+{
+  "name": "bot-68",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BOT 68 - Omnichannel customer care desktop application",
+  "main": "electron/main.cjs",
+  "author": "BOT 68",
+  "scripts": {
+    "dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && cross-env BOT68_DEV_URL=http://127.0.0.1:5173 electron .\"",
+    "dev:web": "vite",
+    "dev:server": "node server/index.mjs",
+    "build": "tsc -b && vite build",
+    "build:win": "npm run build && electron-builder --win nsis",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --pretty false"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "dexie": "latest",
+    "dexie-react-hooks": "latest",
+    "express": "latest",
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/express": "latest",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "concurrently": "latest",
+    "cross-env": "latest",
+    "electron": "latest",
+    "electron-builder": "latest",
+    "typescript": "latest",
+    "wait-on": "latest"
+  },
+  "build": {
+    "appId": "vn.bot68.desktop",
+    "productName": "BOT 68",
+    "directories": { "output": "release" },
+    "files": ["dist/**/*", "electron/**/*", "package.json"],
+    "win": { "target": ["nsis"], "artifactName": "BOT-68-Setup-${version}.${ext}" },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "BOT 68"
+    }
+  }
+}
