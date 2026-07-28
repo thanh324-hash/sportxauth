@@ -11,7 +11,7 @@ export function createApp(config) {
   const db = openDatabase(config.databasePath)
   app.locals.db = db
   app.disable('x-powered-by')
-  app.use(express.json({ limit: '2mb' }))
+  app.use(express.json({ limit: '2mb', verify:(req,_,buffer)=>{req.rawBody=buffer} }))
   app.use((_, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
@@ -107,6 +107,12 @@ export function createApp(config) {
     res.sendStatus(403)
   })
   app.post('/webhooks/meta', (req, res) => {
+    if(config.metaAppSecret){
+      const received=String(req.headers['x-hub-signature-256']||'').replace(/^sha256=/,'')
+      const expected=crypto.createHmac('sha256',config.metaAppSecret).update(req.rawBody||Buffer.alloc(0)).digest('hex')
+      const a=Buffer.from(received,'hex'),b=Buffer.from(expected,'hex')
+      if(!received||a.length!==b.length||!crypto.timingSafeEqual(a,b))return res.status(401).json({error:'Chữ ký webhook Meta không hợp lệ'})
+    }
     const entries=Array.isArray(req.body?.entry)?req.body.entry:[]
     const insert=db.prepare('INSERT INTO sync_events(id,tenant_id,provider,event_type,external_id,payload,created_at) VALUES(?,?,?,?,?,?,?)')
     for(const entry of entries){
@@ -115,10 +121,56 @@ export function createApp(config) {
     }
     res.sendStatus(200)
   })
-  app.get('/oauth/meta/start', authenticate, (_, res) => {
-    if(!config.metaAppId)return res.status(503).json({error:'META_APP_ID chưa được cấu hình'})
-    res.status(501).json({error:'OAuth callback will be enabled after a public HTTPS URL is configured'})
+  app.post('/api/oauth/meta/start', authenticate, ownerOnly, (req, res) => {
+    if(!config.metaAppId || !config.metaAppSecret)return res.status(503).json({error:'META_APP_ID và META_APP_SECRET chưa được cấu hình'})
+    if(config.production && !config.publicUrl.startsWith('https://'))return res.status(503).json({error:'OAuth Meta yêu cầu BOT68_PUBLIC_URL dùng HTTPS'})
+    const flowId=id('oauth'),state=crypto.randomBytes(32).toString('base64url'),now=Date.now()
+    const stateHash=crypto.createHash('sha256').update(state).digest('hex')
+    db.prepare('INSERT INTO oauth_flows(id,tenant_id,user_id,provider,state_hash,created_at,expires_at) VALUES(?,?,?,?,?,?,?)').run(flowId,req.session.tenantId,req.session.userId,'meta',stateHash,now,now+10*60*1000)
+    const redirectUri=`${config.publicUrl}/oauth/meta/callback`
+    const params=new URLSearchParams({client_id:config.metaAppId,redirect_uri:redirectUri,state,response_type:'code',scope:'pages_show_list,pages_manage_metadata,pages_messaging,pages_read_engagement,business_management,instagram_basic,instagram_manage_messages'})
+    res.json({flowId,authorizeUrl:`https://www.facebook.com/${config.metaGraphVersion}/dialog/oauth?${params}`})
+  })
+  app.get('/oauth/meta/callback', async(req,res)=>{
+    const stateHash=crypto.createHash('sha256').update(String(req.query.state||'')).digest('hex')
+    const flow=db.prepare("SELECT * FROM oauth_flows WHERE state_hash=? AND status='pending'").get(stateHash)
+    if(!flow || flow.expires_at<Date.now())return res.status(400).type('html').send(oauthHtml(false,'Phiên kết nối đã hết hạn. Hãy quay lại BOT 68 và thử lại.'))
+    if(req.query.error){db.prepare("UPDATE oauth_flows SET status='failed',error=? WHERE id=?").run(String(req.query.error_description||req.query.error),flow.id);return res.status(400).type('html').send(oauthHtml(false,'Facebook không cấp quyền cho BOT 68.'))}
+    try{
+      const redirectUri=`${config.publicUrl}/oauth/meta/callback`
+      const tokenUrl=new URL(`https://graph.facebook.com/${config.metaGraphVersion}/oauth/access_token`)
+      tokenUrl.search=new URLSearchParams({client_id:config.metaAppId,client_secret:config.metaAppSecret,redirect_uri:redirectUri,code:String(req.query.code||'')}).toString()
+      const tokenResponse=await config.fetchImpl(tokenUrl);const tokenBody=await tokenResponse.json()
+      if(!tokenResponse.ok||!tokenBody.access_token)throw new Error(tokenBody.error?.message||'Không đổi được mã đăng nhập Meta')
+      const longUrl=new URL(`https://graph.facebook.com/${config.metaGraphVersion}/oauth/access_token`)
+      longUrl.search=new URLSearchParams({grant_type:'fb_exchange_token',client_id:config.metaAppId,client_secret:config.metaAppSecret,fb_exchange_token:tokenBody.access_token}).toString()
+      const longResponse=await config.fetchImpl(longUrl);const longBody=await longResponse.json();const userToken=longResponse.ok&&longBody.access_token?longBody.access_token:tokenBody.access_token
+      const accountsUrl=new URL(`https://graph.facebook.com/${config.metaGraphVersion}/me/accounts`)
+      accountsUrl.search=new URLSearchParams({fields:'id,name,access_token,instagram_business_account{id,username,name}',limit:'100',access_token:userToken}).toString()
+      const accountsResponse=await config.fetchImpl(accountsUrl);const accountsBody=await accountsResponse.json()
+      if(!accountsResponse.ok)throw new Error(accountsBody.error?.message||'Không lấy được danh sách Fanpage')
+      const insert=db.prepare('INSERT INTO oauth_assets(id,flow_id,tenant_id,provider,external_id,display_name,encrypted_token,parent_external_id,metadata) VALUES(?,?,?,?,?,?,?,?,?)')
+      db.exec('BEGIN');try{for(const page of accountsBody.data||[]){const pageToken=page.access_token||userToken;insert.run(id('asset'),flow.id,flow.tenant_id,'facebook',String(page.id),String(page.name||page.id),encryptSecret(pageToken,config.encryptionSecret),null,'{}');if(page.instagram_business_account){const ig=page.instagram_business_account;insert.run(id('asset'),flow.id,flow.tenant_id,'instagram',String(ig.id),String(ig.username||ig.name||ig.id),encryptSecret(pageToken,config.encryptionSecret),String(page.id),JSON.stringify({pageId:String(page.id),pageName:String(page.name||'')}))}}db.prepare("UPDATE oauth_flows SET status='ready' WHERE id=?").run(flow.id);db.exec('COMMIT')}catch(error){db.exec('ROLLBACK');throw error}
+      res.type('html').send(oauthHtml(true,'Đã xác thực thành công. Hãy quay lại ứng dụng BOT 68 để chọn Fanpage và Instagram.'))
+    }catch(error){db.prepare("UPDATE oauth_flows SET status='failed',error=? WHERE id=?").run(error.message,flow.id);res.status(502).type('html').send(oauthHtml(false,`Không thể hoàn tất kết nối: ${escapeHtml(error.message)}`))}
+  })
+  app.get('/api/oauth/meta/status/:flowId',authenticate,ownerOnly,(req,res)=>{
+    const flow=db.prepare('SELECT id,status,error,expires_at FROM oauth_flows WHERE id=? AND tenant_id=? AND user_id=?').get(req.params.flowId,req.session.tenantId,req.session.userId)
+    if(!flow)return res.sendStatus(404)
+    const assets=flow.status==='ready'?db.prepare('SELECT id,provider,external_id,display_name,parent_external_id,metadata FROM oauth_assets WHERE flow_id=? AND tenant_id=?').all(flow.id,req.session.tenantId).map(row=>({id:row.id,provider:row.provider,externalId:row.external_id,displayName:row.display_name,parentExternalId:row.parent_external_id,metadata:JSON.parse(row.metadata)})):[]
+    res.json({status:flow.expires_at<Date.now()&&flow.status==='pending'?'expired':flow.status,error:flow.error,assets})
+  })
+  app.post('/api/oauth/meta/complete',authenticate,ownerOnly,(req,res)=>{
+    const selected=Array.isArray(req.body?.assetIds)?req.body.assetIds.slice(0,200):[]
+    const flow=db.prepare("SELECT * FROM oauth_flows WHERE id=? AND tenant_id=? AND user_id=? AND status='ready'").get(req.body?.flowId,req.session.tenantId,req.session.userId)
+    if(!flow)return res.status(404).json({error:'Không tìm thấy phiên kết nối sẵn sàng'})
+    const getAsset=db.prepare('SELECT * FROM oauth_assets WHERE id=? AND flow_id=? AND tenant_id=?'),upsert=db.prepare("INSERT INTO channel_connections(id,tenant_id,provider,external_id,display_name,encrypted_token,status,created_at) VALUES(?,?,?,?,?,?,'active',?) ON CONFLICT(tenant_id,provider,external_id) DO UPDATE SET display_name=excluded.display_name,encrypted_token=excluded.encrypted_token,status='active'")
+    let connected=0;db.exec('BEGIN');try{for(const assetId of selected){const asset=getAsset.get(assetId,flow.id,req.session.tenantId);if(asset){upsert.run(id('chn'),req.session.tenantId,asset.provider,asset.external_id,asset.display_name,asset.encrypted_token,Date.now());connected++}}db.prepare("UPDATE oauth_flows SET status='completed' WHERE id=?").run(flow.id);db.exec('COMMIT')}catch(error){db.exec('ROLLBACK');throw error}
+    res.json({ok:true,connected})
   })
   app.use((error,_,res,next)=>{ if(res.headersSent)return next(error);res.status(500).json({error:config.production?'Lỗi máy chủ':error.message}) })
   return app
 }
+
+function escapeHtml(value){return String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]))}
+function oauthHtml(ok,message){return `<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>BOT 68</title><body style="margin:0;background:#08111f;color:#e9eef6;font:16px system-ui;display:grid;place-items:center;height:100vh"><main style="max-width:520px;text-align:center;padding:40px;border:1px solid #24344a;border-radius:18px;background:#0e1a2a"><div style="font-size:48px">${ok?'✓':'!'}</div><h1 style="color:${ok?'#48d795':'#ff7650'}">${ok?'Kết nối thành công':'Kết nối chưa hoàn tất'}</h1><p style="color:#9aa8ba;line-height:1.6">${message}</p><b>Bạn có thể đóng cửa sổ này.</b></main></body></html>`}

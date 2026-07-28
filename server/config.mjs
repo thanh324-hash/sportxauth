@@ -11,6 +11,8 @@ export function loadConfig(overrides = {}) {
     metaVerifyToken: process.env.META_VERIFY_TOKEN || 'bot68-development-token',
     metaAppId: process.env.META_APP_ID || '',
     metaAppSecret: process.env.META_APP_SECRET || '',
+    metaGraphVersion: process.env.META_GRAPH_VERSION || 'v21.0',
+    fetchImpl: globalThis.fetch,
     publicUrl: (process.env.BOT68_PUBLIC_URL || 'http://127.0.0.1:6868').replace(/\/$/, ''),
     production: process.env.NODE_ENV === 'production',
     ...overrides

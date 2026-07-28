@@ -32,7 +32,20 @@ export function openDatabase(filename) {
       business_name TEXT NOT NULL, tone TEXT NOT NULL DEFAULT 'friendly',
       instructions TEXT NOT NULL DEFAULT '', safety_mode TEXT NOT NULL DEFAULT 'suggest', updated_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS oauth_flows (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, provider TEXT NOT NULL,
+      state_hash TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT 'pending',
+      error TEXT, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS oauth_assets (
+      id TEXT PRIMARY KEY, flow_id TEXT NOT NULL REFERENCES oauth_flows(id) ON DELETE CASCADE,
+      tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, provider TEXT NOT NULL,
+      external_id TEXT NOT NULL, display_name TEXT NOT NULL, encrypted_token TEXT NOT NULL,
+      parent_external_id TEXT, metadata TEXT NOT NULL DEFAULT '{}'
+    );
     CREATE INDEX IF NOT EXISTS sync_events_pending ON sync_events(tenant_id, delivered_at, created_at);
+    CREATE INDEX IF NOT EXISTS oauth_flows_owner ON oauth_flows(tenant_id, user_id, created_at);
   `)
   return db
 }
