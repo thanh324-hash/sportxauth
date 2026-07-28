@@ -4,10 +4,13 @@ import { after, before, test } from 'node:test'
 import { createApp } from './app.mjs'
 import { loadConfig } from './config.mjs'
 
-let server, base, app
+let server, base, app, telegramWebhookSecret
 before(async()=>{
-  const metaFetch=async url=>{
+  const metaFetch=async (url,request={})=>{
     const parsed=new URL(url)
+    if(parsed.pathname.endsWith('/getMe'))return new Response(JSON.stringify({ok:true,result:{id:680068,username:'bot68_demo_bot',first_name:'BOT 68 Demo',can_join_groups:true}}),{status:200,headers:{'content-type':'application/json'}})
+    if(parsed.pathname.endsWith('/setWebhook')){telegramWebhookSecret=JSON.parse(request?.body||'{}').secret_token;return new Response(JSON.stringify({ok:true,result:true}),{status:200,headers:{'content-type':'application/json'}})}
+    if(parsed.pathname.endsWith('/sendMessage'))return new Response(JSON.stringify({ok:true,result:{message_id:868,date:Math.floor(Date.now()/1000),chat:{id:6800},text:'Tin nhắn thử'}}),{status:200,headers:{'content-type':'application/json'}})
     if(parsed.pathname.endsWith('/oauth/access_token'))return new Response(JSON.stringify({access_token:parsed.searchParams.has('fb_exchange_token')?'long-user-token':'short-user-token'}),{status:200,headers:{'content-type':'application/json'}})
     if(parsed.pathname.endsWith('/me/accounts'))return new Response(JSON.stringify({data:[{id:'page-68',name:'BOT 68 Page',access_token:'page-token-68',instagram_business_account:{id:'ig-68',username:'bot68.official'}}]}),{status:200,headers:{'content-type':'application/json'}})
     return new Response(JSON.stringify({error:{message:'unexpected mock URL'}}),{status:404,headers:{'content-type':'application/json'}})
@@ -44,4 +47,13 @@ test('Meta OAuth discovers Facebook and Instagram assets then connects selected 
   const signature=crypto.createHmac('sha256','meta-secret-68').update(webhookBody).digest('hex')
   const accepted=await fetch(`${base}/webhooks/meta`,{method:'POST',headers:{'content-type':'application/json','x-hub-signature-256':`sha256=${signature}`},body:webhookBody});assert.equal(accepted.status,200)
   const events=await request('/api/sync/events',{headers:auth});assert.equal(events.body.length,1);assert.equal(events.body[0].provider,'facebook')
+})
+test('Telegram adapter verifies bot, protects webhook, deduplicates updates and sends text',async()=>{
+  const owner=await register(5),auth={authorization:`Bearer ${owner.body.token}`},token='680068:abcdefghijklmnopqrstuvwxyz_123456789'
+  const connected=await request('/api/channels/telegram/connect',{method:'POST',headers:auth,body:JSON.stringify({token})});assert.equal(connected.status,201);assert.equal(connected.body.displayName,'@bot68_demo_bot');assert.ok(telegramWebhookSecret)
+  const update=JSON.stringify({update_id:68001,message:{message_id:91,date:Math.floor(Date.now()/1000),chat:{id:12345},from:{id:12345,first_name:'Khách'},text:'Xin chào từ Telegram'}})
+  const denied=await fetch(`${base}/webhooks/telegram/${connected.body.id}`,{method:'POST',headers:{'content-type':'application/json','x-telegram-bot-api-secret-token':'wrong'},body:update});assert.equal(denied.status,401)
+  for(let i=0;i<2;i++){const accepted=await fetch(`${base}/webhooks/telegram/${connected.body.id}`,{method:'POST',headers:{'content-type':'application/json','x-telegram-bot-api-secret-token':telegramWebhookSecret},body:update});assert.equal(accepted.status,200)}
+  const events=await request('/api/sync/events',{headers:auth});assert.equal(events.body.length,1);assert.equal(events.body[0].payload.text,'Xin chào từ Telegram');assert.equal(events.body[0].payload.conversationId,'12345')
+  const sent=await request('/api/messages/send',{method:'POST',headers:auth,body:JSON.stringify({connectionId:connected.body.id,recipientId:'12345',text:'BOT 68 xin chào'})});assert.equal(sent.status,200);assert.equal(sent.body.externalMessageId,'868')
 })

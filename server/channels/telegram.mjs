@@ -1,0 +1,9 @@
+export const telegramAdapter={
+  provider:'telegram',
+  capabilities:{receiveMessages:true,sendMessages:true,comments:false,oauth:false,webhook:true},
+  async verify({token,fetchImpl}){const body=await call(token,'getMe',{},fetchImpl);return {externalId:String(body.result.id),displayName:body.result.username?`@${body.result.username}`:body.result.first_name||String(body.result.id),metadata:{username:body.result.username||'',firstName:body.result.first_name||'',canJoinGroups:Boolean(body.result.can_join_groups)}}},
+  async setWebhook({token,url,secret,fetchImpl}){return call(token,'setWebhook',{url,secret_token:secret,allowed_updates:['message','edited_message','callback_query','business_message','edited_business_message']},fetchImpl)},
+  async sendText({token,recipientId,text,fetchImpl}){const body=await call(token,'sendMessage',{chat_id:recipientId,text},fetchImpl);return {externalMessageId:String(body.result.message_id),sentAt:(body.result.date||Math.floor(Date.now()/1000))*1000,raw:body.result}},
+  normalize(update){const message=update.business_message||update.edited_business_message||update.message||update.edited_message;if(!message)return null;return {type:'message',externalEventId:String(update.update_id),conversationId:String(message.chat?.id||''),senderId:String(message.from?.id||''),senderName:[message.from?.first_name,message.from?.last_name].filter(Boolean).join(' ')||message.from?.username||'',text:message.text||message.caption||'',messageId:String(message.message_id),timestamp:(message.date||Math.floor(Date.now()/1000))*1000,raw:update}}
+}
+async function call(token,method,payload,fetchImpl){const response=await fetchImpl(`https://api.telegram.org/bot${token}/${method}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});const body=await response.json();if(!response.ok||!body.ok)throw new Error(body.description||`Telegram ${method} thất bại`);return body}

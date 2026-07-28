@@ -47,8 +47,14 @@ export function openDatabase(filename) {
     CREATE INDEX IF NOT EXISTS sync_events_pending ON sync_events(tenant_id, delivered_at, created_at);
     CREATE INDEX IF NOT EXISTS oauth_flows_owner ON oauth_flows(tenant_id, user_id, created_at);
   `)
+  ensureColumn(db,'channel_connections','webhook_secret_hash','TEXT')
+  ensureColumn(db,'channel_connections','metadata',"TEXT NOT NULL DEFAULT '{}'")
+  ensureColumn(db,'sync_events','source_connection_id','TEXT')
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS sync_event_dedupe ON sync_events(tenant_id,provider,source_connection_id,external_id,event_type) WHERE source_connection_id IS NOT NULL AND external_id IS NOT NULL')
   return db
 }
+
+function ensureColumn(db,table,column,declaration){const exists=db.prepare(`PRAGMA table_info(${table})`).all().some(row=>row.name===column);if(!exists)db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${declaration}`)}
 
 export function publicTenant(row) { return row && { id: row.id, name: row.name, slug: row.slug, plan: row.plan, createdAt: row.created_at } }
 export function publicUser(row) { return row && { id: row.id, tenantId: row.tenant_id, name: row.name, email: row.email, role: row.role, createdAt: row.created_at } }

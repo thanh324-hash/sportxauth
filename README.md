@@ -29,6 +29,12 @@ Biến môi trường production bắt buộc:
 
 Trong Meta App, URL callback OAuth phải là `${BOT68_PUBLIC_URL}/oauth/meta/callback` và webhook là `${BOT68_PUBLIC_URL}/webhooks/meta`. Luồng kết nối dùng `state` một lần có hạn 10 phút, kiểm tra chữ ký webhook `X-Hub-Signature-256`, phát hiện Facebook Page cùng Instagram Professional liên kết và chỉ lưu các tài khoản do chủ cửa hàng chọn.
 
+## Telegram và channel adapters
+
+Chủ cửa hàng nhập Bot Token lấy từ `@BotFather`. Máy chủ xác minh token bằng `getMe`, tạo webhook `${BOT68_PUBLIC_URL}/webhooks/telegram/:connectionId` với secret riêng, chống update trùng và hỗ trợ gửi văn bản bằng `sendMessage`. `BOT68_PUBLIC_URL` phải là HTTPS công khai để Telegram gọi webhook.
+
+`server/channels/registry.mjs` mô tả khả năng của Facebook, Instagram, Telegram, Zalo OA và TikTok. Telegram đã có adapter hoạt động; Zalo và TikTok có scaffold cùng danh sách credential/quyền cần thiết để tiếp tục mà không thay đổi lõi inbox.
+
 Chạy kiểm thử máy chủ:
 
 ```powershell
