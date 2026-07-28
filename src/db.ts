@@ -5,12 +5,14 @@ export interface Contact { id: string; name: string; phone?: string; channel: Ch
 export interface Conversation { id: string; contactId: string; channel: Channel; preview: string; unread: number; updatedAt: number; assignee: string; status: 'new'|'open'|'waiting'|'closed' }
 export interface Message { id: string; conversationId: string; from: 'customer'|'agent'|'ai'; text: string; createdAt: number }
 export interface Order { id: string; contactId: string; total: number; status: 'draft'|'confirmed'|'shipping'|'completed'; createdAt: number }
+export interface SyncEvent { id:string; provider:Channel; type:string; externalId?:string; payload:unknown; createdAt:number }
 
 export const db = new Dexie('bot68-local') as Dexie & {
   contacts: EntityTable<Contact, 'id'>; conversations: EntityTable<Conversation, 'id'>;
-  messages: EntityTable<Message, 'id'>; orders: EntityTable<Order, 'id'>
+  messages: EntityTable<Message, 'id'>; orders: EntityTable<Order, 'id'>; syncEvents:EntityTable<SyncEvent,'id'>
 }
 db.version(1).stores({ contacts: 'id,name,channel', conversations: 'id,contactId,channel,updatedAt,status', messages: 'id,conversationId,createdAt', orders: 'id,contactId,status,createdAt' })
+db.version(2).stores({ contacts: 'id,name,channel', conversations: 'id,contactId,channel,updatedAt,status', messages: 'id,conversationId,createdAt', orders: 'id,contactId,status,createdAt', syncEvents:'id,provider,createdAt' })
 
 export async function seedDatabase() {
   if (await db.contacts.count()) return

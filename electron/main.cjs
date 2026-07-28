@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain } = require('electron')
+const { app, BrowserWindow, shell, ipcMain, safeStorage } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
@@ -22,6 +22,19 @@ const createWindow = () => {
 app.whenReady().then(() => {
   ipcMain.handle('open-external', (_, url) => shell.openExternal(url))
   ipcMain.handle('app-info', () => ({ version: app.getVersion(), dataPath: app.getPath('userData') }))
+  const sessionPath = path.join(app.getPath('userData'), 'session.bin')
+  ipcMain.handle('session-save', (_, value) => {
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows encryption is not available')
+    fs.writeFileSync(sessionPath, safeStorage.encryptString(JSON.stringify(value)))
+    return true
+  })
+  ipcMain.handle('session-load', () => {
+    try {
+      if (!safeStorage.isEncryptionAvailable() || !fs.existsSync(sessionPath)) return null
+      return JSON.parse(safeStorage.decryptString(fs.readFileSync(sessionPath)))
+    } catch { return null }
+  })
+  ipcMain.handle('session-clear', () => { if (fs.existsSync(sessionPath)) fs.unlinkSync(sessionPath); return true })
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
 })

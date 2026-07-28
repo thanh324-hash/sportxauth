@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { AtSign, BarChart3, Bot, Boxes, ChevronDown, CircleHelp, ClipboardList, ContactRound, GraduationCap, Inbox, LayoutDashboard, MessageCircle, MessagesSquare, MoreHorizontal, Package, Plus, Search, Send, Settings, ShieldCheck, Sparkles, Store, Tag, Users, Wifi, X } from 'lucide-react'
 import { db, seedDatabase, type Channel, type Conversation, type Message } from './db'
+import AuthScreen from './AuthScreen'
+import { clearSession, loadSession, type ServerSession } from './api'
+import { useServerSync, type SyncState } from './useServerSync'
 
 type Page = 'dashboard'|'inbox'|'customers'|'orders'|'products'|'ai'|'team'|'reports'|'connections'|'settings'
 const nav: Array<[Page,string,any]> = [
@@ -13,15 +16,18 @@ const channelIcon = (c:Channel) => c==='facebook'?<MessagesSquare/>:c==='instagr
 const channelName:Record<Channel,string> = {facebook:'Facebook',instagram:'Instagram',zalo:'Zalo OA',telegram:'Telegram',tiktok:'TikTok'}
 
 function App(){
-  const [page,setPage]=useState<Page>('inbox'); const [selected,setSelected]=useState('v1'); const [draft,setDraft]=useState(''); const [aiOpen,setAiOpen]=useState(true)
-  useEffect(()=>{seedDatabase()},[])
-  return <div className="app-shell"><Sidebar page={page} setPage={setPage}/><main><Topbar page={page}/>{page==='inbox'?<InboxPage selected={selected} setSelected={setSelected} draft={draft} setDraft={setDraft} aiOpen={aiOpen} setAiOpen={setAiOpen}/>:<ModulePage page={page}/>}</main></div>
+  const [session,setSession]=useState<ServerSession|null|undefined>(undefined)
+  useEffect(()=>{loadSession().then(setSession)},[])
+  if(session===undefined)return <div className="app-loading"><Bot/><span>Đang mở BOT 68...</span></div>
+  if(!session)return <AuthScreen onAuthenticated={setSession}/>
+  return <AuthenticatedApp session={session} onLogout={async()=>{await clearSession();setSession(null)}}/>
 }
+function AuthenticatedApp({session,onLogout}:{session:ServerSession;onLogout:()=>void}){const [page,setPage]=useState<Page>('inbox');const [selected,setSelected]=useState('v1');const [draft,setDraft]=useState('');const [aiOpen,setAiOpen]=useState(true);const syncState=useServerSync(session);useEffect(()=>{seedDatabase()},[]);return <div className="app-shell"><Sidebar page={page} setPage={setPage}/><main><Topbar page={page} session={session} syncState={syncState} onLogout={onLogout}/>{page==='inbox'?<InboxPage selected={selected} setSelected={setSelected} draft={draft} setDraft={setDraft} aiOpen={aiOpen} setAiOpen={setAiOpen}/>:<ModulePage page={page}/>}</main></div>}
 
 function Sidebar({page,setPage}:{page:Page,setPage:(p:Page)=>void}){
  return <aside className="sidebar"><div className="brand"><div className="brand-mark"><Bot/></div><div><b>BOT 68</b><small>Omnichannel AI</small></div></div><button className="workspace"><span className="store-logo"><Store/></span><span><small>Cửa hàng</small><b>BOT 68 Demo</b></span><ChevronDown/></button><nav>{nav.map(([id,label,Icon])=><button key={id} className={page===id?'active':''} onClick={()=>setPage(id)}><Icon/><span>{label}</span>{id==='inbox'&&<em>3</em>}</button>)}</nav><div className="sidebar-foot"><div className="plan"><Sparkles/><div><b>Gói thử nghiệm</b><small>Còn 30 ngày</small></div></div><button><CircleHelp/><span>Trợ giúp</span></button></div></aside>
 }
-function Topbar({page}:{page:Page}){const title=nav.find(n=>n[0]===page)?.[1];return <header className="topbar"><div><h1>{title}</h1><p>{page==='inbox'?'Quản lý tất cả cuộc trò chuyện tại một nơi':'Trung tâm quản lý BOT 68'}</p></div><div className="top-actions"><button className="connection"><i/>Máy chủ thử nghiệm</button><button className="avatar">68</button></div></header>}
+function Topbar({page,session,syncState,onLogout}:{page:Page;session:ServerSession;syncState:SyncState;onLogout:()=>void}){const title=nav.find(n=>n[0]===page)?.[1];const label={offline:'Ngoại tuyến',connecting:'Đang kết nối',online:'Đã đồng bộ',error:'Mất kết nối'}[syncState];return <header className="topbar"><div><h1>{title}</h1><p>{page==='inbox'?'Quản lý tất cả cuộc trò chuyện tại một nơi':'Trung tâm quản lý BOT 68'}</p></div><div className="top-actions"><button className={'connection '+syncState}><i/>{label}</button><button className="avatar" title={`${session.user.name} · Bấm để đăng xuất`} onClick={onLogout}>{session.user.name.trim().split(/\s+/).slice(-1)[0]?.slice(0,2).toUpperCase()||'68'}</button></div></header>}
 
 function InboxPage({selected,setSelected,draft,setDraft,aiOpen,setAiOpen}:{selected:string;setSelected:(s:string)=>void;draft:string;setDraft:(s:string)=>void;aiOpen:boolean;setAiOpen:(b:boolean)=>void}){
  const conversations=useLiveQuery(()=>db.conversations.orderBy('updatedAt').reverse().toArray())||[]; const contacts=useLiveQuery(()=>db.contacts.toArray())||[]
