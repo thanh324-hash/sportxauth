@@ -51,6 +51,7 @@ test('Meta OAuth discovers Facebook and Instagram assets then connects selected 
   const accepted=await fetch(`${base}/webhooks/meta`,{method:'POST',headers:{'content-type':'application/json','x-hub-signature-256':`sha256=${signature}`},body:webhookBody});assert.equal(accepted.status,200)
   const events=await request('/api/sync/events',{headers:auth});assert.equal(events.body.length,1);assert.equal(events.body[0].provider,'facebook')
   assert.equal(events.body[0].payload.text,'Xin chào BOT 68');assert.equal(events.body[0].payload.conversationId,'customer-1')
+  const crm=await request('/api/customers',{headers:auth});assert.equal(crm.body.length,1);assert.equal(crm.body[0].externalId,'customer-1')
   const facebookChannel=channels.body.find(channel=>channel.provider==='facebook'),sent=await request('/api/messages/send',{method:'POST',headers:auth,body:JSON.stringify({connectionId:facebookChannel.id,recipientId:'customer-1',text:'BOT 68 trả lời Meta'})});assert.equal(sent.status,200);assert.equal(sent.body.externalMessageId,'meta-out-68')
 })
 test('Telegram adapter verifies bot, protects webhook, deduplicates updates and sends text',async()=>{
@@ -60,6 +61,7 @@ test('Telegram adapter verifies bot, protects webhook, deduplicates updates and 
   const denied=await fetch(`${base}/webhooks/telegram/${connected.body.id}`,{method:'POST',headers:{'content-type':'application/json','x-telegram-bot-api-secret-token':'wrong'},body:update});assert.equal(denied.status,401)
   for(let i=0;i<2;i++){const accepted=await fetch(`${base}/webhooks/telegram/${connected.body.id}`,{method:'POST',headers:{'content-type':'application/json','x-telegram-bot-api-secret-token':telegramWebhookSecret},body:update});assert.equal(accepted.status,200)}
   const events=await request('/api/sync/events',{headers:auth});assert.equal(events.body.length,1);assert.equal(events.body[0].payload.text,'Xin chào từ Telegram');assert.equal(events.body[0].payload.conversationId,'12345')
+  const crm=await request('/api/customers',{headers:auth});assert.equal(crm.body[0].name,'Khách');assert.equal(crm.body[0].channel,'telegram')
   const sent=await request('/api/messages/send',{method:'POST',headers:auth,body:JSON.stringify({connectionId:connected.body.id,recipientId:'12345',text:'BOT 68 xin chào'})});assert.equal(sent.status,200);assert.equal(sent.body.externalMessageId,'868')
 })
 test('Zalo OA adapter verifies OA, protects webhook, normalizes events and sends text',async()=>{
@@ -70,6 +72,7 @@ test('Zalo OA adapter verifies OA, protects webhook, normalizes events and sends
   const denied=await fetch(base+invalidPath,{method:'POST',headers:{'content-type':'application/json'},body:event});assert.equal(denied.status,401)
   for(let i=0;i<2;i++){const accepted=await fetch(base+validUrl.pathname,{method:'POST',headers:{'content-type':'application/json'},body:event});assert.equal(accepted.status,200)}
   const events=await request('/api/sync/events',{headers:auth});assert.equal(events.body.length,1);assert.equal(events.body[0].provider,'zalo');assert.equal(events.body[0].payload.senderName,'Khách Zalo')
+  const crm=await request('/api/customers',{headers:auth});assert.equal(crm.body[0].externalId,'zalo-user-68')
   const sent=await request('/api/messages/send',{method:'POST',headers:auth,body:JSON.stringify({connectionId:connected.body.id,recipientId:'zalo-user-68',text:'BOT 68 trả lời Zalo'})});assert.equal(sent.status,200);assert.equal(sent.body.externalMessageId,'zalo-message-68')
 })
 test('tenant AI knowledge is isolated and produces grounded reviewable suggestions',async()=>{
@@ -79,4 +82,16 @@ test('tenant AI knowledge is isolated and produces grounded reviewable suggestio
   const own=await request('/api/ai/knowledge',{headers:authA}),other=await request('/api/ai/knowledge',{headers:authB});assert.equal(own.body.length,1);assert.equal(other.body.length,0)
   const suggestion=await request('/api/ai/suggest',{method:'POST',headers:authA,body:JSON.stringify({customerName:'Lan',question:'Áo có được đổi size không?',messages:[{from:'customer',text:'Mình mặc không vừa'}]})});assert.equal(suggestion.status,200);assert.equal(suggestion.body.provider,'local-fallback');assert.equal(suggestion.body.requiresReview,true);assert.deepEqual(suggestion.body.sourceIds,[document.body.id]);assert.ok(suggestion.body.draft.includes('7 ngày'))
   const noLeak=await request('/api/ai/suggest',{method:'POST',headers:authB,body:JSON.stringify({question:'Áo đổi size thế nào?'})});assert.equal(noLeak.body.sourceIds.length,0);assert.equal(noLeak.body.draft.includes('7 ngày'),false)
+})
+test('CRM, inventory, orders, team and reports are tenant isolated',async()=>{
+  const a=await register(9),b=await register(10),authA={authorization:`Bearer ${a.body.token}`},authB={authorization:`Bearer ${b.body.token}`}
+  const customer=await request('/api/customers',{method:'POST',headers:authA,body:JSON.stringify({name:'Khách hàng A',phone:'0901686868',channel:'facebook',tags:['VIP']})});assert.equal(customer.status,201)
+  const product=await request('/api/products',{method:'POST',headers:authA,body:JSON.stringify({sku:'AO-68',name:'Áo BOT 68',price:250000,stock:12})});assert.equal(product.status,201)
+  const order=await request('/api/orders',{method:'POST',headers:authA,body:JSON.stringify({customerId:customer.body.id,status:'confirmed',items:[{productId:product.body.id,name:product.body.name,quantity:2,unitPrice:product.body.price}]})});assert.equal(order.status,201);assert.equal(order.body.total,500000)
+  const completed=await request(`/api/orders/${order.body.id}`,{method:'PATCH',headers:authA,body:JSON.stringify({status:'completed'})});assert.equal(completed.body.status,'completed')
+  const member=await request('/api/team',{method:'POST',headers:authA,body:JSON.stringify({name:'Nhân viên A',email:'agent-a@example.com',password:'nhanvien68',role:'agent'})});assert.equal(member.status,201);assert.equal(member.body.role,'agent')
+  const summary=await request('/api/reports/summary',{headers:authA});assert.deepEqual({customers:summary.body.customers,products:summary.body.products,orders:summary.body.orders,team:summary.body.team,revenue:summary.body.revenue},{customers:1,products:1,orders:1,team:2,revenue:500000})
+  for(const endpoint of ['/api/customers','/api/products','/api/orders']){const hidden=await request(endpoint,{headers:authB});assert.equal(hidden.body.length,0)}
+  const crossOrder=await request('/api/orders',{method:'POST',headers:authB,body:JSON.stringify({customerId:customer.body.id,items:[{productId:product.body.id,name:'Không hợp lệ',quantity:1,unitPrice:1}]})});assert.equal(crossOrder.status,400)
+  const crossEdit=await request(`/api/products/${product.body.id}`,{method:'PATCH',headers:authB,body:JSON.stringify({stock:999})});assert.equal(crossEdit.status,404)
 })

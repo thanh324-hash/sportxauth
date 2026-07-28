@@ -37,6 +37,33 @@ export function openDatabase(filename) {
       title TEXT NOT NULL, content TEXT NOT NULL, tags TEXT NOT NULL DEFAULT '[]',
       enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS customers (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name TEXT NOT NULL, phone TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',
+      channel TEXT NOT NULL DEFAULT 'manual', external_id TEXT, tags TEXT NOT NULL DEFAULT '[]', note TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS customers_tenant_updated ON customers(tenant_id, updated_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS customers_social_identity ON customers(tenant_id, channel, external_id) WHERE external_id IS NOT NULL AND external_id <> '';
+    CREATE TABLE IF NOT EXISTS products (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      sku TEXT NOT NULL, name TEXT NOT NULL, price INTEGER NOT NULL DEFAULT 0,
+      stock INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'active',
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      UNIQUE(tenant_id, sku)
+    );
+    CREATE TABLE IF NOT EXISTS orders (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      customer_id TEXT REFERENCES customers(id) ON DELETE SET NULL, code TEXT NOT NULL,
+      total INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'draft', note TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      UNIQUE(tenant_id, code)
+    );
+    CREATE TABLE IF NOT EXISTS order_items (
+      id TEXT PRIMARY KEY, order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      product_id TEXT REFERENCES products(id) ON DELETE SET NULL, name TEXT NOT NULL,
+      quantity INTEGER NOT NULL, unit_price INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS oauth_flows (
       id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, provider TEXT NOT NULL,

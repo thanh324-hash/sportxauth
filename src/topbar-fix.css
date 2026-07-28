@@ -1,0 +1,26 @@
+.top-actions .connection {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 96px;
+  width: auto;
+  height: auto;
+  background: #101d2d;
+  border-radius: 18px;
+  white-space: nowrap;
+}
+
+.top-actions .sync-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: #ffb34f;
+}
+
+.top-actions .connection.online .sync-dot { background: #35d083; }
+.top-actions .connection.error .sync-dot { background: #ff5e5e; }
+.top-actions .connection.offline .sync-dot { background: #7f8b9c; }

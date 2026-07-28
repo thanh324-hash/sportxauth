@@ -11,6 +11,7 @@ let embeddedServer = null
 let embeddedDatabase = null
 let localServerUrl = ''
 let localServerError = ''
+let smokeEmbeddedSession = null
 
 const findAvailablePort = async (host = '127.0.0.1', start = 6868, end = 6878) => {
   for (let port = start; port <= end; port += 1) {
@@ -53,6 +54,15 @@ const startEmbeddedServer = async () => {
     const server = serverApp.listen(port, host, () => resolve(server))
     server.once('error', reject)
   })
+  if (process.env.BOT68_SMOKE_EMBEDDED === '1') {
+    const email = `smoke-${Date.now()}@bot68.local`
+    const registered = await fetch(`${localServerUrl}/api/auth/register`, { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({businessName:'BOT 68 Fashion',name:'Chủ cửa hàng',email,password:'Bot68-Smoke-2026'}) }).then(response=>response.json())
+    const headers = {'content-type':'application/json',authorization:`Bearer ${registered.token}`}
+    const customer = await fetch(`${localServerUrl}/api/customers`, { method:'POST', headers, body:JSON.stringify({name:'Nguyễn Minh Anh',phone:'090 123 6868',email:'minhanh@example.com',channel:'facebook',tags:['VIP','Đã mua'],note:'Quan tâm áo khoác màu đen'}) }).then(response=>response.json())
+    const product = await fetch(`${localServerUrl}/api/products`, { method:'POST', headers, body:JSON.stringify({sku:'AK-68-DEN',name:'Áo khoác BOT 68 màu đen',price:690000,stock:18}) }).then(response=>response.json())
+    await fetch(`${localServerUrl}/api/orders`, { method:'POST', headers, body:JSON.stringify({customerId:customer.id,status:'confirmed',items:[{productId:product.id,name:product.name,quantity:1,unitPrice:product.price}]}) })
+    smokeEmbeddedSession = {...registered,serverUrl:localServerUrl}
+  }
 }
 
 const stopEmbeddedServer = () => {
@@ -91,6 +101,7 @@ app.whenReady().then(async () => {
     return true
   })
   ipcMain.handle('session-load', () => {
+    if (smokeEmbeddedSession) return smokeEmbeddedSession
     if (process.env.BOT68_SMOKE_OFFLINE === '1') return { serverUrl:'', token:'', offline:true, user:{id:'smoke',tenantId:'smoke',name:'Kiểm thử BOT 68',email:'',role:'owner'},tenant:{id:'smoke',name:'BOT 68 kiểm thử',slug:'smoke',plan:'local'} }
     try {
       if (!safeStorage.isEncryptionAvailable() || !fs.existsSync(sessionPath)) return null
