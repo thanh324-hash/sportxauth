@@ -1,10 +1,12 @@
 {
   "name": "bot-68",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "description": "BOT 68 - Omnichannel customer care desktop application",
   "main": "electron/main.cjs",
-  "author": "BOT 68",
+  "author": { "name": "BOT 68" },
+  "homepage": "https://github.com/thanh324-hash/sportxauth",
+  "license": "UNLICENSED",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && cross-env BOT68_DEV_URL=http://127.0.0.1:5173 electron .\"",
     "dev:web": "vite",
@@ -55,6 +57,9 @@
       "package.json"
     ],
     "win": {
+      "icon": "build/icon.svg",
+      "executableName": "BOT 68",
+      "legalTrademarks": "BOT 68",
       "target": [
         "nsis"
       ],

@@ -7,6 +7,7 @@ const { pathToFileURL } = require('url')
 const { encryptPortableBackup, decryptPortableBackup } = require('./backup-crypto.cjs')
 
 if (process.env.BOT68_USER_DATA) app.setPath('userData', path.resolve(process.env.BOT68_USER_DATA))
+app.setAppUserModelId('vn.bot68.desktop')
 
 let embeddedServer = null
 let embeddedDatabase = null
