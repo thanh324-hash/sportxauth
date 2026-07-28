@@ -4,4 +4,5 @@ import App from './App'
 import './styles.css'
 import './auth.css'
 import './connections.css'
+import './ai.css'
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>)

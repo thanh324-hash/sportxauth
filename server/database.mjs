@@ -32,6 +32,11 @@ export function openDatabase(filename) {
       business_name TEXT NOT NULL, tone TEXT NOT NULL DEFAULT 'friendly',
       instructions TEXT NOT NULL DEFAULT '', safety_mode TEXT NOT NULL DEFAULT 'suggest', updated_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS ai_knowledge (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      title TEXT NOT NULL, content TEXT NOT NULL, tags TEXT NOT NULL DEFAULT '[]',
+      enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS oauth_flows (
       id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, provider TEXT NOT NULL,
@@ -46,6 +51,7 @@ export function openDatabase(filename) {
     );
     CREATE INDEX IF NOT EXISTS sync_events_pending ON sync_events(tenant_id, delivered_at, created_at);
     CREATE INDEX IF NOT EXISTS oauth_flows_owner ON oauth_flows(tenant_id, user_id, created_at);
+    CREATE INDEX IF NOT EXISTS ai_knowledge_tenant ON ai_knowledge(tenant_id, enabled, updated_at);
   `)
   ensureColumn(db,'channel_connections','webhook_secret_hash','TEXT')
   ensureColumn(db,'channel_connections','metadata',"TEXT NOT NULL DEFAULT '{}'")

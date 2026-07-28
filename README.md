@@ -43,6 +43,18 @@ Chủ cửa hàng nhập OA Access Token. Máy chủ xác minh bằng `GET /v3.0
 
 Sự kiện từ Meta, Telegram và Zalo được chuyển thành cùng một định dạng. Ứng dụng Windows ghi sự kiện, khách hàng, cuộc trò chuyện và tin nhắn trong một transaction IndexedDB trước khi xác nhận với máy chủ. Các cuộc trò chuyện đồng bộ giữ `connectionId` và ID người nhận để nút gửi trong inbox gọi đúng adapter mạng xã hội.
 
+## AI riêng theo cửa hàng
+
+Mỗi tenant có hồ sơ AI và kho kiến thức độc lập. Chủ cửa hàng cấu hình tên, giọng điệu, quy tắc và chế độ an toàn; tài liệu có thể thêm, tắt hoặc xóa. API `/api/ai/suggest` tìm các tài liệu liên quan, tạo prompt có lịch sử gần nhất và trả về câu gợi ý cùng ID nguồn.
+
+Nếu chưa cấu hình nhà cung cấp AI, máy chủ dùng chế độ `local-fallback` dựa trên kiến thức và luôn yêu cầu nhân viên duyệt. Để dùng một dịch vụ hỗ trợ Chat Completions API, đặt:
+
+- `BOT68_AI_BASE_URL`: URL gốc của nhà cung cấp hỗ trợ Chat Completions API.
+- `BOT68_AI_API_KEY`.
+- `BOT68_AI_MODEL`: model do nhà cung cấp cấp quyền cho tài khoản của bạn.
+
+API key chỉ nằm trong biến môi trường máy chủ, không được gửi xuống ứng dụng Windows hoặc lưu trong lịch sử hội thoại.
+
 Chạy kiểm thử máy chủ:
 
 ```powershell
