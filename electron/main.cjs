@@ -1,6 +1,66 @@
 const { app, BrowserWindow, shell, ipcMain, safeStorage } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const crypto = require('crypto')
+const net = require('net')
+const { pathToFileURL } = require('url')
+
+if (process.env.BOT68_USER_DATA) app.setPath('userData', path.resolve(process.env.BOT68_USER_DATA))
+
+let embeddedServer = null
+let embeddedDatabase = null
+let localServerUrl = ''
+let localServerError = ''
+
+const findAvailablePort = async (host = '127.0.0.1', start = 6868, end = 6878) => {
+  for (let port = start; port <= end; port += 1) {
+    const available = await new Promise(resolve => {
+      const probe = net.createServer()
+      probe.once('error', () => resolve(false))
+      probe.once('listening', () => probe.close(() => resolve(true)))
+      probe.listen(port, host)
+    })
+    if (available) return port
+  }
+  throw new Error(`Không tìm thấy cổng trống từ ${start} đến ${end}`)
+}
+
+const loadOrCreateServerSecrets = userDataPath => {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows Safe Storage chưa sẵn sàng')
+  const secretsPath = path.join(userDataPath, 'server-secrets.bin')
+  if (fs.existsSync(secretsPath)) return JSON.parse(safeStorage.decryptString(fs.readFileSync(secretsPath)))
+  const secrets = { authSecret: crypto.randomBytes(48).toString('base64url'), encryptionSecret: crypto.randomBytes(48).toString('base64url') }
+  fs.mkdirSync(userDataPath, { recursive: true })
+  fs.writeFileSync(secretsPath, safeStorage.encryptString(JSON.stringify(secrets)))
+  return secrets
+}
+
+const startEmbeddedServer = async () => {
+  const host = '127.0.0.1'
+  const port = await findAvailablePort(host)
+  const userDataPath = app.getPath('userData')
+  const secrets = loadOrCreateServerSecrets(userDataPath)
+  const databasePath = path.join(userDataPath, 'server', 'bot68.sqlite')
+  const serverRoot = path.join(__dirname, '..', 'server')
+  const [{ createApp }, { loadConfig }] = await Promise.all([
+    import(pathToFileURL(path.join(serverRoot, 'app.mjs')).href),
+    import(pathToFileURL(path.join(serverRoot, 'config.mjs')).href)
+  ])
+  localServerUrl = `http://${host}:${port}`
+  const serverApp = createApp(loadConfig({ host, port, databasePath, authSecret: secrets.authSecret, encryptionSecret: secrets.encryptionSecret, publicUrl: localServerUrl, production: false }))
+  embeddedDatabase = serverApp.locals.db
+  embeddedServer = await new Promise((resolve, reject) => {
+    const server = serverApp.listen(port, host, () => resolve(server))
+    server.once('error', reject)
+  })
+}
+
+const stopEmbeddedServer = () => {
+  if (embeddedServer) embeddedServer.close()
+  embeddedServer = null
+  try { embeddedDatabase?.close() } catch {}
+  embeddedDatabase = null
+}
 
 const createWindow = () => {
   const win = new BrowserWindow({
@@ -19,9 +79,11 @@ const createWindow = () => {
   })
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  try { await startEmbeddedServer() }
+  catch (error) { localServerError = error instanceof Error ? error.message : String(error) }
   ipcMain.handle('open-external', (_, url) => shell.openExternal(url))
-  ipcMain.handle('app-info', () => ({ version: app.getVersion(), dataPath: app.getPath('userData') }))
+  ipcMain.handle('app-info', () => ({ version: app.getVersion(), dataPath: app.getPath('userData'), localServerUrl, localServerStatus: localServerUrl ? 'ready' : 'error', localServerError }))
   const sessionPath = path.join(app.getPath('userData'), 'session.bin')
   ipcMain.handle('session-save', (_, value) => {
     if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows encryption is not available')
@@ -38,5 +100,7 @@ app.whenReady().then(() => {
   ipcMain.handle('session-clear', () => { if (fs.existsSync(sessionPath)) fs.unlinkSync(sessionPath); return true })
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+  if (process.env.BOT68_TEST_EXIT_MS) setTimeout(() => app.quit(), Number(process.env.BOT68_TEST_EXIT_MS))
 })
+app.on('before-quit', stopEmbeddedServer)
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
