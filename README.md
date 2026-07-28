@@ -25,6 +25,9 @@ Biến môi trường production bắt buộc:
 - `BOT68_ENCRYPTION_SECRET`: khóa mã hóa token mạng xã hội.
 - `BOT68_PUBLIC_URL`: URL HTTPS cố định.
 - `META_APP_ID`, `META_APP_SECRET`, `META_VERIFY_TOKEN`: cấu hình ứng dụng Meta.
+- `META_GRAPH_VERSION`: phiên bản Graph API, mặc định `v21.0` và có thể nâng mà không sửa mã nguồn.
+
+Trong Meta App, URL callback OAuth phải là `${BOT68_PUBLIC_URL}/oauth/meta/callback` và webhook là `${BOT68_PUBLIC_URL}/webhooks/meta`. Luồng kết nối dùng `state` một lần có hạn 10 phút, kiểm tra chữ ký webhook `X-Hub-Signature-256`, phát hiện Facebook Page cùng Instagram Professional liên kết và chỉ lưu các tài khoản do chủ cửa hàng chọn.
 
 Chạy kiểm thử máy chủ:
 
