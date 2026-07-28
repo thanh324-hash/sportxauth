@@ -1,6 +1,8 @@
 # BOT 68
 
-Ứng dụng chăm sóc khách hàng đa kênh dành cho Windows. Mã nguồn hiện gồm ứng dụng Electron/React, cơ sở dữ liệu cục bộ IndexedDB và máy chủ webhook thử nghiệm.
+Ứng dụng chăm sóc khách hàng đa kênh dành cho Windows. Mã nguồn hiện gồm ứng dụng Electron/React, cơ sở dữ liệu cục bộ IndexedDB và máy chủ đa cửa hàng.
+
+Ứng dụng desktop hỗ trợ đăng ký/đăng nhập với máy chủ, lưu phiên bằng Windows Safe Storage, chạy ngoại tuyến và tự đồng bộ hàng đợi webhook về cơ sở dữ liệu trên máy. Khi sự kiện đã ghi cục bộ thành công, ứng dụng mới xác nhận để máy chủ đánh dấu đã giao.
 
 ## Chạy phát triển
 
