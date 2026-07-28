@@ -95,3 +95,15 @@ test('CRM, inventory, orders, team and reports are tenant isolated',async()=>{
   const crossOrder=await request('/api/orders',{method:'POST',headers:authB,body:JSON.stringify({customerId:customer.body.id,items:[{productId:product.body.id,name:'Không hợp lệ',quantity:1,unitPrice:1}]})});assert.equal(crossOrder.status,400)
   const crossEdit=await request(`/api/products/${product.body.id}`,{method:'PATCH',headers:authB,body:JSON.stringify({stock:999})});assert.equal(crossEdit.status,404)
 })
+test('tenant backup exports safe business data and restores into another tenant',async()=>{
+  const source=await register(11),target=await register(12),authSource={authorization:`Bearer ${source.body.token}`},authTarget={authorization:`Bearer ${target.body.token}`}
+  const customer=await request('/api/customers',{method:'POST',headers:authSource,body:JSON.stringify({name:'Khách sao lưu',phone:'0911686868',tags:['Sao lưu']})})
+  const product=await request('/api/products',{method:'POST',headers:authSource,body:JSON.stringify({sku:'BK-68',name:'Sản phẩm sao lưu',price:68000,stock:6})})
+  await request('/api/orders',{method:'POST',headers:authSource,body:JSON.stringify({customerId:customer.body.id,status:'completed',items:[{productId:product.body.id,name:product.body.name,quantity:2,unitPrice:product.body.price}]})})
+  await request('/api/ai/knowledge',{method:'POST',headers:authSource,body:JSON.stringify({title:'Tài liệu sao lưu',content:'Nội dung dành riêng cho cửa hàng nguồn.',tags:['backup']})})
+  const exported=await request('/api/backup/export',{headers:authSource});assert.equal(exported.status,200);assert.equal(exported.body.format,'bot68-server-backup');assert.equal(JSON.stringify(exported.body).includes('password_hash'),false);assert.equal(JSON.stringify(exported.body).includes('encrypted_token'),false)
+  const restored=await request('/api/backup/import',{method:'POST',headers:authTarget,body:JSON.stringify({confirmation:'RESTORE',backup:exported.body})});assert.equal(restored.status,200);assert.deepEqual(restored.body.restored,{customers:1,products:1,orders:1,knowledge:1});assert.equal(restored.body.requiresChannelReconnect,true)
+  const summary=await request('/api/reports/summary',{headers:authTarget});assert.equal(summary.body.revenue,136000);assert.equal(summary.body.customers,1);assert.equal(summary.body.products,1)
+  const targetKnowledge=await request('/api/ai/knowledge',{headers:authTarget});assert.equal(targetKnowledge.body[0].title,'Tài liệu sao lưu')
+  const sourceStillIntact=await request('/api/reports/summary',{headers:authSource});assert.equal(sourceStillIntact.body.revenue,136000)
+})

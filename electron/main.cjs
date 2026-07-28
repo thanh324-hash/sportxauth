@@ -1,9 +1,10 @@
-const { app, BrowserWindow, shell, ipcMain, safeStorage } = require('electron')
+const { app, BrowserWindow, shell, ipcMain, safeStorage, dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
 const net = require('net')
 const { pathToFileURL } = require('url')
+const { encryptPortableBackup, decryptPortableBackup } = require('./backup-crypto.cjs')
 
 if (process.env.BOT68_USER_DATA) app.setPath('userData', path.resolve(process.env.BOT68_USER_DATA))
 
@@ -109,6 +110,20 @@ app.whenReady().then(async () => {
     } catch { return null }
   })
   ipcMain.handle('session-clear', () => { if (fs.existsSync(sessionPath)) fs.unlinkSync(sessionPath); return true })
+  ipcMain.handle('backup-save', async (event, value, passphrase) => {
+    const owner = BrowserWindow.fromWebContents(event.sender), date = new Date().toISOString().slice(0,10)
+    const result = await dialog.showSaveDialog(owner, { title:'Lưu bản sao BOT 68', defaultPath:`BOT-68-backup-${date}.bot68backup`, filters:[{name:'BOT 68 Backup',extensions:['bot68backup']}] })
+    if (result.canceled || !result.filePath) return { canceled:true }
+    fs.writeFileSync(result.filePath, encryptPortableBackup(value, passphrase), { encoding:'utf8', flag:'w' })
+    return { canceled:false, filePath:result.filePath }
+  })
+  ipcMain.handle('backup-open', async (event, passphrase) => {
+    const owner = BrowserWindow.fromWebContents(event.sender)
+    const result = await dialog.showOpenDialog(owner, { title:'Chọn bản sao BOT 68', properties:['openFile'], filters:[{name:'BOT 68 Backup',extensions:['bot68backup']}] })
+    if (result.canceled || !result.filePaths[0]) return { canceled:true }
+    const stat = fs.statSync(result.filePaths[0]);if(stat.size>256*1024*1024)throw new Error('Tệp sao lưu vượt giới hạn 256 MB')
+    return { canceled:false, filePath:result.filePaths[0], value:decryptPortableBackup(fs.readFileSync(result.filePaths[0],'utf8'), passphrase) }
+  })
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
   if (process.env.BOT68_TEST_EXIT_MS) setTimeout(() => app.quit(), Number(process.env.BOT68_TEST_EXIT_MS))
