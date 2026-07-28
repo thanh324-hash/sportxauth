@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import express from 'express'
 import { openDatabase, publicTenant, publicUser } from './database.mjs'
 import { createSession, decryptSecret, encryptSecret, hashPassword, readSession, verifyPassword } from './crypto.mjs'
+import { channelAdapters, publicAdapterCatalog } from './channels/registry.mjs'
 
 const id = prefix => `${prefix}_${crypto.randomUUID()}`
 const slugify = value => String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 48)
@@ -78,6 +79,17 @@ export function createApp(config) {
     const rows = db.prepare('SELECT id,provider,external_id,display_name,status,created_at FROM channel_connections WHERE tenant_id=? ORDER BY created_at DESC').all(req.session.tenantId)
     res.json(rows.map(r=>({id:r.id,provider:r.provider,externalId:r.external_id,displayName:r.display_name,status:r.status,createdAt:r.created_at})))
   })
+  app.get('/api/channel-adapters',authenticate,(_,res)=>res.json(publicAdapterCatalog()))
+  app.post('/api/channels/telegram/connect',authenticate,ownerOnly,async(req,res,next)=>{
+    try{
+      const token=String(req.body?.token||'').trim();if(!token||!/^\d+:[A-Za-z0-9_-]{20,}$/.test(token))return res.status(400).json({error:'Telegram Bot Token không hợp lệ'})
+      const adapter=channelAdapters.telegram,profile=await adapter.verify({token,fetchImpl:config.fetchImpl}),existing=db.prepare("SELECT id FROM channel_connections WHERE tenant_id=? AND provider='telegram' AND external_id=?").get(req.session.tenantId,profile.externalId),connectionId=existing?.id||id('chn'),webhookSecret=crypto.randomBytes(32).toString('base64url'),now=Date.now()
+      const webhookUrl=`${config.publicUrl}/webhooks/telegram/${connectionId}`
+      await adapter.setWebhook({token,url:webhookUrl,secret:webhookSecret,fetchImpl:config.fetchImpl})
+      db.prepare("INSERT INTO channel_connections(id,tenant_id,provider,external_id,display_name,encrypted_token,status,created_at,webhook_secret_hash,metadata) VALUES(?,?,?,?,?,?,'active',?,?,?) ON CONFLICT(tenant_id,provider,external_id) DO UPDATE SET display_name=excluded.display_name,encrypted_token=excluded.encrypted_token,status='active',webhook_secret_hash=excluded.webhook_secret_hash,metadata=excluded.metadata").run(connectionId,req.session.tenantId,'telegram',profile.externalId,profile.displayName,encryptSecret(token,config.encryptionSecret),now,crypto.createHash('sha256').update(webhookSecret).digest('hex'),JSON.stringify(profile.metadata))
+      res.status(201).json({id:connectionId,provider:'telegram',externalId:profile.externalId,displayName:profile.displayName,status:'active',webhookUrl})
+    }catch(error){next(error)}
+  })
   app.post('/api/channels', authenticate, ownerOnly, (req, res) => {
     const { provider, externalId, displayName, accessToken } = req.body || {}
     if (!['facebook','instagram','zalo','telegram','tiktok'].includes(provider) || !externalId || !displayName || !accessToken) return res.status(400).json({ error:'Thông tin kết nối không hợp lệ' })
@@ -105,6 +117,14 @@ export function createApp(config) {
   app.get('/webhooks/meta', (req, res) => {
     if (req.query['hub.mode']==='subscribe' && req.query['hub.verify_token']===config.metaVerifyToken) return res.status(200).send(req.query['hub.challenge'])
     res.sendStatus(403)
+  })
+  app.post('/webhooks/telegram/:connectionId',(req,res)=>{
+    const connection=db.prepare("SELECT * FROM channel_connections WHERE id=? AND provider='telegram' AND status='active'").get(req.params.connectionId)
+    if(!connection)return res.sendStatus(404)
+    const received=String(req.headers['x-telegram-bot-api-secret-token']||''),expected=String(connection.webhook_secret_hash||''),actual=crypto.createHash('sha256').update(received).digest('hex')
+    const a=Buffer.from(actual),b=Buffer.from(expected);if(!received||a.length!==b.length||!crypto.timingSafeEqual(a,b))return res.status(401).json({error:'Telegram webhook secret không hợp lệ'})
+    const normalized=channelAdapters.telegram.normalize(req.body);if(normalized){db.prepare('INSERT OR IGNORE INTO sync_events(id,tenant_id,provider,event_type,external_id,payload,created_at,source_connection_id) VALUES(?,?,?,?,?,?,?,?)').run(id('evt'),connection.tenant_id,'telegram',normalized.type,normalized.externalEventId,JSON.stringify(normalized),Date.now(),connection.id)}
+    res.sendStatus(200)
   })
   app.post('/webhooks/meta', (req, res) => {
     if(config.metaAppSecret){
@@ -167,6 +187,16 @@ export function createApp(config) {
     const getAsset=db.prepare('SELECT * FROM oauth_assets WHERE id=? AND flow_id=? AND tenant_id=?'),upsert=db.prepare("INSERT INTO channel_connections(id,tenant_id,provider,external_id,display_name,encrypted_token,status,created_at) VALUES(?,?,?,?,?,?,'active',?) ON CONFLICT(tenant_id,provider,external_id) DO UPDATE SET display_name=excluded.display_name,encrypted_token=excluded.encrypted_token,status='active'")
     let connected=0;db.exec('BEGIN');try{for(const assetId of selected){const asset=getAsset.get(assetId,flow.id,req.session.tenantId);if(asset){upsert.run(id('chn'),req.session.tenantId,asset.provider,asset.external_id,asset.display_name,asset.encrypted_token,Date.now());connected++}}db.prepare("UPDATE oauth_flows SET status='completed' WHERE id=?").run(flow.id);db.exec('COMMIT')}catch(error){db.exec('ROLLBACK');throw error}
     res.json({ok:true,connected})
+  })
+  app.post('/api/messages/send',authenticate,async(req,res,next)=>{
+    try{
+      const connection=db.prepare("SELECT * FROM channel_connections WHERE id=? AND tenant_id=? AND status='active'").get(req.body?.connectionId,req.session.tenantId)
+      if(!connection)return res.status(404).json({error:'Không tìm thấy kênh gửi'})
+      const text=String(req.body?.text||'').trim(),recipientId=String(req.body?.recipientId||'').trim();if(!text||text.length>4000||!recipientId)return res.status(400).json({error:'Nội dung hoặc người nhận không hợp lệ'})
+      const adapter=channelAdapters[connection.provider];if(!adapter?.sendText)return res.status(501).json({error:`Kênh ${connection.provider} chưa hỗ trợ gửi tin`})
+      const token=decryptSecret(connection.encrypted_token,config.encryptionSecret),result=await adapter.sendText({token,recipientId,text,fetchImpl:config.fetchImpl})
+      res.json({ok:true,provider:connection.provider,...result})
+    }catch(error){next(error)}
   })
   app.use((error,_,res,next)=>{ if(res.headersSent)return next(error);res.status(500).json({error:config.production?'Lỗi máy chủ':error.message}) })
   return app
