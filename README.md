@@ -15,7 +15,20 @@ npm.cmd run dev
 npm.cmd run dev:server
 ```
 
-Kiểm tra tại `http://127.0.0.1:6868/health`.
+Kiểm tra tại `http://127.0.0.1:6868/health`. Máy chủ sử dụng SQLite trong `server-data/`, hỗ trợ đăng ký/đăng nhập, phân tách dữ liệu theo cửa hàng, hồ sơ AI, kết nối kênh được mã hóa và hàng đợi đồng bộ.
+
+Biến môi trường production bắt buộc:
+
+- `BOT68_AUTH_SECRET`: khóa ký phiên đăng nhập.
+- `BOT68_ENCRYPTION_SECRET`: khóa mã hóa token mạng xã hội.
+- `BOT68_PUBLIC_URL`: URL HTTPS cố định.
+- `META_APP_ID`, `META_APP_SECRET`, `META_VERIFY_TOKEN`: cấu hình ứng dụng Meta.
+
+Chạy kiểm thử máy chủ:
+
+```powershell
+npm.cmd run test:server
+```
 
 ## Đóng gói Windows
 
