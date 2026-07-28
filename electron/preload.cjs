@@ -5,4 +5,6 @@ contextBridge.exposeInMainWorld('bot68', {
   saveSession: value => ipcRenderer.invoke('session-save', value),
   loadSession: () => ipcRenderer.invoke('session-load'),
   clearSession: () => ipcRenderer.invoke('session-clear')
+  ,saveBackup: (value, passphrase) => ipcRenderer.invoke('backup-save', value, passphrase)
+  ,openBackup: passphrase => ipcRenderer.invoke('backup-open', passphrase)
 })
