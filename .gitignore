@@ -5,3 +5,5 @@ release/
 *.log
 *.tsbuildinfo
 server-data/
+work-embedded-test-*/
+work-smoke-*/
