@@ -1,0 +1,26 @@
+{$BOT68_DOMAIN} {
+  encode zstd gzip
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "no-referrer"
+    -Server
+  }
+
+  request_body {
+    max_size 4MB
+  }
+
+  reverse_proxy server:6868 {
+    health_uri /health
+    health_interval 30s
+    health_timeout 5s
+  }
+
+  log {
+    output stdout
+    format json
+  }
+}

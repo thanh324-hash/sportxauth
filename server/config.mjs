@@ -25,8 +25,11 @@ export function loadConfig(overrides = {}) {
 export function validateProductionConfig(config) {
   if (!config.production) return
   const problems = []
-  if (config.authSecret.includes('development-secret')) problems.push('BOT68_AUTH_SECRET')
-  if (config.encryptionSecret.includes('development-secret')) problems.push('BOT68_ENCRYPTION_SECRET')
-  if (!config.publicUrl.startsWith('https://')) problems.push('BOT68_PUBLIC_URL (HTTPS)')
+  const weak=value=>typeof value!=='string'||value.length<32||value.includes('development-secret')||value.includes('replace-with')
+  if (weak(config.authSecret)) problems.push('BOT68_AUTH_SECRET (random, >=32 chars)')
+  if (weak(config.encryptionSecret)||config.encryptionSecret===config.authSecret) problems.push('BOT68_ENCRYPTION_SECRET (different random key, >=32 chars)')
+  try { const url=new URL(config.publicUrl);if(url.protocol!=='https:'||['localhost','127.0.0.1','bot68.example.com'].includes(url.hostname))problems.push('BOT68_PUBLIC_URL (real public HTTPS domain)') } catch { problems.push('BOT68_PUBLIC_URL (valid HTTPS URL)') }
+  if(Boolean(config.metaAppId)!==Boolean(config.metaAppSecret))problems.push('META_APP_ID + META_APP_SECRET (both required)')
+  if(config.metaAppId&&weak(config.metaVerifyToken))problems.push('META_VERIFY_TOKEN (random, >=32 chars)')
   if (problems.length) throw new Error(`Missing secure production configuration: ${problems.join(', ')}`)
 }
