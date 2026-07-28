@@ -33,7 +33,15 @@ Trong Meta App, URL callback OAuth phải là `${BOT68_PUBLIC_URL}/oauth/meta/ca
 
 Chủ cửa hàng nhập Bot Token lấy từ `@BotFather`. Máy chủ xác minh token bằng `getMe`, tạo webhook `${BOT68_PUBLIC_URL}/webhooks/telegram/:connectionId` với secret riêng, chống update trùng và hỗ trợ gửi văn bản bằng `sendMessage`. `BOT68_PUBLIC_URL` phải là HTTPS công khai để Telegram gọi webhook.
 
-`server/channels/registry.mjs` mô tả khả năng của Facebook, Instagram, Telegram, Zalo OA và TikTok. Telegram đã có adapter hoạt động; Zalo và TikTok có scaffold cùng danh sách credential/quyền cần thiết để tiếp tục mà không thay đổi lõi inbox.
+`server/channels/registry.mjs` mô tả khả năng của Facebook, Instagram, Telegram, Zalo OA và TikTok. Facebook, Instagram, Telegram và Zalo đã có adapter nhận/gửi; TikTok giữ scaffold cùng danh sách credential/quyền cần thiết để tiếp tục mà không thay đổi lõi inbox.
+
+## Zalo Official Account
+
+Chủ cửa hàng nhập OA Access Token. Máy chủ xác minh bằng `GET /v3.0/oa/getoa`, tạo URL webhook có secret ngẫu nhiên riêng và hỗ trợ gửi tin chăm sóc khách hàng qua `POST /v3.0/oa/message/cs`. URL webhook trả về phải được sao chép vào cấu hình webhook của ứng dụng Zalo Developer. Các sự kiện `user_send_*` được chuẩn hóa và chống lưu trùng.
+
+## Đồng bộ inbox cục bộ
+
+Sự kiện từ Meta, Telegram và Zalo được chuyển thành cùng một định dạng. Ứng dụng Windows ghi sự kiện, khách hàng, cuộc trò chuyện và tin nhắn trong một transaction IndexedDB trước khi xác nhận với máy chủ. Các cuộc trò chuyện đồng bộ giữ `connectionId` và ID người nhận để nút gửi trong inbox gọi đúng adapter mạng xã hội.
 
 Chạy kiểm thử máy chủ:
 

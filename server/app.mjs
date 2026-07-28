@@ -90,6 +90,14 @@ export function createApp(config) {
       res.status(201).json({id:connectionId,provider:'telegram',externalId:profile.externalId,displayName:profile.displayName,status:'active',webhookUrl})
     }catch(error){next(error)}
   })
+  app.post('/api/channels/zalo/connect',authenticate,ownerOnly,async(req,res,next)=>{
+    try{
+      const token=String(req.body?.token||'').trim();if(token.length<20)return res.status(400).json({error:'Zalo OA Access Token không hợp lệ'})
+      const adapter=channelAdapters.zalo,profile=await adapter.verify({token,fetchImpl:config.fetchImpl}),existing=db.prepare("SELECT id FROM channel_connections WHERE tenant_id=? AND provider='zalo' AND external_id=?").get(req.session.tenantId,profile.externalId),connectionId=existing?.id||id('chn'),webhookSecret=crypto.randomBytes(32).toString('base64url'),now=Date.now(),webhookUrl=`${config.publicUrl}/webhooks/zalo/${connectionId}/${webhookSecret}`
+      db.prepare("INSERT INTO channel_connections(id,tenant_id,provider,external_id,display_name,encrypted_token,status,created_at,webhook_secret_hash,metadata) VALUES(?,?,?,?,?,?,'active',?,?,?) ON CONFLICT(tenant_id,provider,external_id) DO UPDATE SET display_name=excluded.display_name,encrypted_token=excluded.encrypted_token,status='active',webhook_secret_hash=excluded.webhook_secret_hash,metadata=excluded.metadata").run(connectionId,req.session.tenantId,'zalo',profile.externalId,profile.displayName,encryptSecret(token,config.encryptionSecret),now,crypto.createHash('sha256').update(webhookSecret).digest('hex'),JSON.stringify({...profile.metadata,webhookConfigured:false}))
+      res.status(201).json({id:connectionId,provider:'zalo',externalId:profile.externalId,displayName:profile.displayName,status:'active',webhookUrl,requiresManualWebhookSetup:true})
+    }catch(error){next(error)}
+  })
   app.post('/api/channels', authenticate, ownerOnly, (req, res) => {
     const { provider, externalId, displayName, accessToken } = req.body || {}
     if (!['facebook','instagram','zalo','telegram','tiktok'].includes(provider) || !externalId || !displayName || !accessToken) return res.status(400).json({ error:'Thông tin kết nối không hợp lệ' })
@@ -105,8 +113,8 @@ export function createApp(config) {
   })
   app.get('/api/sync/events', authenticate, (req, res) => {
     const limit=Math.min(Number(req.query.limit)||100,500)
-    const rows=db.prepare('SELECT id,provider,event_type,external_id,payload,created_at FROM sync_events WHERE tenant_id=? AND delivered_at IS NULL ORDER BY created_at LIMIT ?').all(req.session.tenantId,limit)
-    res.json(rows.map(r=>({id:r.id,provider:r.provider,type:r.event_type,externalId:r.external_id,payload:JSON.parse(r.payload),createdAt:r.created_at})))
+    const rows=db.prepare('SELECT id,provider,event_type,external_id,payload,created_at,source_connection_id FROM sync_events WHERE tenant_id=? AND delivered_at IS NULL ORDER BY created_at LIMIT ?').all(req.session.tenantId,limit)
+    res.json(rows.map(r=>({id:r.id,provider:r.provider,type:r.event_type,externalId:r.external_id,connectionId:r.source_connection_id,payload:JSON.parse(r.payload),createdAt:r.created_at})))
   })
   app.post('/api/sync/ack', authenticate, (req, res) => {
     const ids=Array.isArray(req.body?.ids)?req.body.ids.slice(0,500):[]
@@ -126,6 +134,12 @@ export function createApp(config) {
     const normalized=channelAdapters.telegram.normalize(req.body);if(normalized){db.prepare('INSERT OR IGNORE INTO sync_events(id,tenant_id,provider,event_type,external_id,payload,created_at,source_connection_id) VALUES(?,?,?,?,?,?,?,?)').run(id('evt'),connection.tenant_id,'telegram',normalized.type,normalized.externalEventId,JSON.stringify(normalized),Date.now(),connection.id)}
     res.sendStatus(200)
   })
+  app.post('/webhooks/zalo/:connectionId/:secret',(req,res)=>{
+    const connection=db.prepare("SELECT * FROM channel_connections WHERE id=? AND provider='zalo' AND status='active'").get(req.params.connectionId);if(!connection)return res.sendStatus(404)
+    const actual=crypto.createHash('sha256').update(String(req.params.secret||'')).digest('hex'),expected=String(connection.webhook_secret_hash||''),a=Buffer.from(actual),b=Buffer.from(expected);if(a.length!==b.length||!crypto.timingSafeEqual(a,b))return res.status(401).json({error:'Zalo webhook secret không hợp lệ'})
+    const normalized=channelAdapters.zalo.normalize(req.body);if(normalized)db.prepare('INSERT OR IGNORE INTO sync_events(id,tenant_id,provider,event_type,external_id,payload,created_at,source_connection_id) VALUES(?,?,?,?,?,?,?,?)').run(id('evt'),connection.tenant_id,'zalo',normalized.type,normalized.externalEventId,JSON.stringify(normalized),Date.now(),connection.id)
+    res.sendStatus(200)
+  })
   app.post('/webhooks/meta', (req, res) => {
     if(config.metaAppSecret){
       const received=String(req.headers['x-hub-signature-256']||'').replace(/^sha256=/,'')
@@ -134,10 +148,10 @@ export function createApp(config) {
       if(!received||a.length!==b.length||!crypto.timingSafeEqual(a,b))return res.status(401).json({error:'Chữ ký webhook Meta không hợp lệ'})
     }
     const entries=Array.isArray(req.body?.entry)?req.body.entry:[]
-    const insert=db.prepare('INSERT INTO sync_events(id,tenant_id,provider,event_type,external_id,payload,created_at) VALUES(?,?,?,?,?,?,?)')
+    const insert=db.prepare('INSERT OR IGNORE INTO sync_events(id,tenant_id,provider,event_type,external_id,payload,created_at,source_connection_id) VALUES(?,?,?,?,?,?,?,?)')
     for(const entry of entries){
-      const connections=db.prepare("SELECT tenant_id FROM channel_connections WHERE provider IN ('facebook','instagram') AND external_id=?").all(String(entry.id))
-      for(const connection of connections) insert.run(id('evt'),connection.tenant_id,req.body.object==='instagram'?'instagram':'facebook','webhook',String(entry.id),JSON.stringify(entry),Date.now())
+      const connections=db.prepare("SELECT id,tenant_id,provider FROM channel_connections WHERE provider IN ('facebook','instagram') AND external_id=?").all(String(entry.id))
+      for(const connection of connections)for(const normalized of channelAdapters[connection.provider].normalizeEntry(entry))insert.run(id('evt'),connection.tenant_id,connection.provider,normalized.type,normalized.externalEventId,JSON.stringify(normalized),Date.now(),connection.id)
     }
     res.sendStatus(200)
   })
@@ -194,7 +208,7 @@ export function createApp(config) {
       if(!connection)return res.status(404).json({error:'Không tìm thấy kênh gửi'})
       const text=String(req.body?.text||'').trim(),recipientId=String(req.body?.recipientId||'').trim();if(!text||text.length>4000||!recipientId)return res.status(400).json({error:'Nội dung hoặc người nhận không hợp lệ'})
       const adapter=channelAdapters[connection.provider];if(!adapter?.sendText)return res.status(501).json({error:`Kênh ${connection.provider} chưa hỗ trợ gửi tin`})
-      const token=decryptSecret(connection.encrypted_token,config.encryptionSecret),result=await adapter.sendText({token,recipientId,text,fetchImpl:config.fetchImpl})
+      const token=decryptSecret(connection.encrypted_token,config.encryptionSecret),result=await adapter.sendText({token,recipientId,text,accountId:connection.external_id,graphVersion:config.metaGraphVersion,fetchImpl:config.fetchImpl})
       res.json({ok:true,provider:connection.provider,...result})
     }catch(error){next(error)}
   })

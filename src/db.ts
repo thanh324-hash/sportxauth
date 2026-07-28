@@ -1,11 +1,11 @@
 import Dexie, { type EntityTable } from 'dexie'
 
 export type Channel = 'facebook' | 'instagram' | 'zalo' | 'telegram' | 'tiktok'
-export interface Contact { id: string; name: string; phone?: string; channel: Channel; avatar: string; tags: string[]; note?: string }
-export interface Conversation { id: string; contactId: string; channel: Channel; preview: string; unread: number; updatedAt: number; assignee: string; status: 'new'|'open'|'waiting'|'closed' }
+export interface Contact { id: string; name: string; phone?: string; channel: Channel; avatar: string; tags: string[]; note?: string; externalId?:string }
+export interface Conversation { id: string; contactId: string; channel: Channel; preview: string; unread: number; updatedAt: number; assignee: string; status: 'new'|'open'|'waiting'|'closed'; connectionId?:string; externalConversationId?:string }
 export interface Message { id: string; conversationId: string; from: 'customer'|'agent'|'ai'; text: string; createdAt: number }
 export interface Order { id: string; contactId: string; total: number; status: 'draft'|'confirmed'|'shipping'|'completed'; createdAt: number }
-export interface SyncEvent { id:string; provider:Channel; type:string; externalId?:string; payload:unknown; createdAt:number }
+export interface SyncEvent { id:string; provider:Channel; type:string; externalId?:string; connectionId?:string; payload:any; createdAt:number }
 
 export const db = new Dexie('bot68-local') as Dexie & {
   contacts: EntityTable<Contact, 'id'>; conversations: EntityTable<Conversation, 'id'>;
@@ -34,4 +34,18 @@ export async function seedDatabase() {
     { id:'m2', conversationId:'v1', from:'agent', text:'BOT 68 xin chào Minh Anh! Bạn đang quan tâm mẫu nào ạ?', createdAt:now-180000 },
     { id:'m3', conversationId:'v1', from:'customer', text:'Shop còn mẫu màu đen size M không?', createdAt:now-60000 }
   ])
+}
+
+export async function applySyncEvents(events:SyncEvent[]){
+  await db.transaction('rw',db.contacts,db.conversations,db.messages,db.syncEvents,async()=>{
+    for(const event of events){
+      await db.syncEvents.put(event)
+      const payload=event.payload;if(event.type!=='message'||!payload?.conversationId||!payload?.senderId)continue
+      const contactId=`${event.provider}:${payload.senderId}`,conversationId=`${event.provider}:${event.connectionId||'channel'}:${payload.conversationId}`,timestamp=Number(payload.timestamp||event.createdAt),name=String(payload.senderName||`${event.provider} ${payload.senderId}`),initials=name.split(/\s+/).slice(-2).map((x:string)=>x[0]).join('').toUpperCase()
+      const existingContact=await db.contacts.get(contactId);if(!existingContact)await db.contacts.add({id:contactId,name,channel:event.provider,avatar:initials||'KH',tags:['Khách mới'],externalId:String(payload.senderId)})
+      const existingConversation=await db.conversations.get(conversationId)
+      await db.conversations.put({id:conversationId,contactId,channel:event.provider,preview:String(payload.text||'[Tệp đính kèm]'),unread:(existingConversation?.unread||0)+1,updatedAt:timestamp,assignee:existingConversation?.assignee||'Chưa giao',status:existingConversation?.status||'new',connectionId:event.connectionId,externalConversationId:String(payload.conversationId)})
+      await db.messages.put({id:`${event.provider}:${payload.messageId||event.externalId||event.id}`,conversationId,from:'customer',text:String(payload.text||'[Tệp đính kèm]'),createdAt:timestamp})
+    }
+  })
 }
