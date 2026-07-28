@@ -1,0 +1,63 @@
+name: bot68
+
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 6868
+      BOT68_DATABASE: /data/bot68.sqlite
+      BOT68_PUBLIC_URL: https://${BOT68_DOMAIN}
+    volumes:
+      - bot68_data:/data
+    expose:
+      - "6868"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:6868/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      BOT68_DOMAIN: ${BOT68_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+volumes:
+  bot68_data:
+  caddy_data:
+  caddy_config:
