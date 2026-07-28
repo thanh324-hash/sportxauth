@@ -9,6 +9,7 @@
     "dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && cross-env BOT68_DEV_URL=http://127.0.0.1:5173 electron .\"",
     "dev:web": "vite",
     "dev:server": "node server/index.mjs",
+    "test:server": "node --test server/*.test.mjs",
     "build": "tsc -b && vite build",
     "build:win": "npm run build && electron-builder --win nsis",
     "preview": "vite preview",
