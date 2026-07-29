@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { AtSign, BarChart3, Bot, Boxes, CheckCircle2, ChevronDown, CircleHelp, ClipboardList, ContactRound, ExternalLink, GraduationCap, Inbox, LayoutDashboard, LoaderCircle, MessageCircle, MessagesSquare, MoreHorizontal, Package, Plus, RefreshCw, Save, Search, Send, Settings, ShieldCheck, Sparkles, Store, Tag, Trash2, Users, Wifi, X } from 'lucide-react'
+import { AtSign, BarChart3, Bot, Boxes, CheckCircle2, ChevronDown, CircleHelp, ClipboardList, ContactRound, Download, ExternalLink, GraduationCap, Inbox, LayoutDashboard, LoaderCircle, LogOut, MessageCircle, MessagesSquare, Monitor, MoreHorizontal, Package, Plus, RefreshCw, Save, Search, Send, Settings, ShieldCheck, Sparkles, Store, Tag, Trash2, Users, Wifi, X } from 'lucide-react'
 import { db, seedDatabase, type Channel, type Conversation, type Message } from './db'
 import AuthScreen from './AuthScreen'
 import { apiRequest, clearSession, loadSession, type ServerSession } from './api'
@@ -23,14 +23,19 @@ function App(){
   const [session,setSession]=useState<ServerSession|null|undefined>(undefined)
   const [webAuthOpen,setWebAuthOpen]=useState(false)
   useEffect(()=>{loadSession().then(saved=>{
-    if(!window.bot68&&saved?.user.id==='web-demo'){clearSession();setSession(null);return}
+    if(!window.bot68&&saved&&(!saved.serverUrl||saved.offline)){clearSession();setSession(null);return}
     if(saved){setSession(saved);return}
     setSession(null)
   })},[])
   if(session===undefined)return <div className="app-loading"><Bot/><span>Đang mở BOT 68...</span></div>
   if(!session&&!window.bot68&&!webAuthOpen)return <LandingPage onLogin={()=>setWebAuthOpen(true)}/>
   if(!session)return <AuthScreen onAuthenticated={setSession}/>
-  return <AuthenticatedApp session={session} onLogout={async()=>{await clearSession();setSession(null);setWebAuthOpen(false)}}/>
+  const logout=async()=>{await clearSession();setSession(null);setWebAuthOpen(false)}
+  if(!window.bot68)return <WebPortal session={session} onLogout={logout}/>
+  return <AuthenticatedApp session={session} onLogout={logout}/>
+}
+function WebPortal({session,onLogout}:{session:ServerSession;onLogout:()=>void}){
+ return <div className="web-portal"><header><div className="landing-brand"><span><Bot/></span><b>BOT 68</b></div><div><span>{session.user.name} · {session.tenant.name}</span><button onClick={onLogout}><LogOut/> Đăng xuất</button></div></header><div className="web-portal-body"><section className="portal-welcome"><div><small>TRUNG TÂM TÀI KHOẢN</small><h1>Xin chào, {session.user.name}</h1><p>Quản lý tài khoản, máy tính liên kết và các kênh mạng xã hội của cửa hàng.</p></div><ShieldCheck/></section><section className="device-card"><Monitor/><div><b>Ứng dụng BOT 68 Windows</b><p>Dữ liệu khách hàng và hội thoại được lưu trên máy tính đã liên kết.</p></div><a href="https://github.com/thanh324-hash/sportxauth/releases/latest/download/BOT-68-Setup-0.10.0.exe"><Download/> Tải ứng dụng</a></section><section className="portal-connections"><div className="module-hero"><div className="hero-icon"><Wifi/></div><div><h2>Kết nối mạng xã hội</h2><p>Đăng nhập và cấp quyền cho các kênh bằng API chính thức.</p></div></div><Connections session={session}/></section></div></div>
 }
 function AuthenticatedApp({session,onLogout}:{session:ServerSession;onLogout:()=>void}){
  const requested=location.hash.slice(1);const initialPage=nav.some(([id])=>id===requested)?requested as Page:'inbox'
