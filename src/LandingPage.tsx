@@ -19,7 +19,7 @@ export default function LandingPage({onLogin}:{onLogin:()=>void}){
    <section className="download-section" id="tai-app">
     <div className="download-heading"><small>TẢI ỨNG DỤNG</small><h2>Chọn thiết bị của bạn</h2><p>Dữ liệu cửa hàng được lưu riêng trên thiết bị và có thể sao lưu khi cần.</p></div>
     <div className="download-grid">
-     <a className="download-card windows" href="https://github.com/thanh324-hash/sportxauth/releases/latest" target="_blank" rel="noreferrer">
+     <a className="download-card windows" href="https://github.com/thanh324-hash/sportxauth/releases/latest/download/BOT-68-Setup-0.10.0.exe">
       <span className="download-icon"><Monitor/></span><div><small>MÁY TÍNH</small><h3>BOT 68 cho Windows</h3><p>Windows 10/11 · 64-bit</p><b><Download/> Tải ứng dụng Windows</b></div>
      </a>
      <div className="download-card android pending">
