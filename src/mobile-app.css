@@ -1,0 +1,8 @@
+@media(max-width:600px){
+  .inbox-grid{display:block;height:auto}
+  .thread-list{height:auto;max-height:46vh;border-right:0}
+  .chat{display:flex;height:calc(100vh - 74px);min-height:620px}
+  .messages{min-height:260px}
+  .media-picker{margin-left:8px;margin-right:8px}
+  .media-tabs{flex-wrap:wrap}.media-tabs label{margin-left:0}
+}
