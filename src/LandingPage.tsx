@@ -1,5 +1,6 @@
 import { AtSign, Bot, CheckCircle2, Download, HardDrive, LockKeyhole, MessageCircle, Monitor, Send, ShieldCheck, Smartphone, Sparkles, Users } from 'lucide-react'
 import './landing.css'
+import './landing-hero-actions.css'
 
 const windowsDownload='https://github.com/thanh324-hash/sportxauth/releases/download/v0.11.5/BOT-68-Setup-0.11.5.exe'
 const androidDownload='https://github.com/thanh324-hash/sportxauth/releases/download/v0.12.1/BOT-68-Android-0.12.1.apk'
@@ -16,7 +17,11 @@ export default function LandingPage({onLogin}:{onLogin:()=>void}){
     <div className="landing-kicker"><ShieldCheck/> Chăm sóc khách hàng đa kênh</div>
     <h1>Một hộp thư.<br/><strong>Mọi khách hàng.</strong></h1>
     <p>Dùng đầy đủ ngay trên web hoặc cài app Windows ổn định hơn. Một tài khoản BOT 68 đồng bộ cửa hàng, nhân viên, khách hàng và các kênh mạng xã hội.</p>
-    <div className="hero-actions"><button onClick={onLogin}>Dùng BOT 68 trên web</button><a href={windowsDownload}><Download/> Tải app Windows</a></div>
+    <div className="hero-actions">
+     <button onClick={onLogin}><Bot/><span className="desktop-label">Dùng BOT 68 trên web</span><span className="mobile-label">Dùng web</span></button>
+     <a href={windowsDownload}><Download/><span className="desktop-label">Tải app Windows</span><span className="mobile-label">Windows</span></a>
+     <a href={androidDownload}><Smartphone/><span className="desktop-label">Tải app Android</span><span className="mobile-label">Android</span></a>
+    </div>
     <div className="landing-channels"><span><MessageCircle/> Facebook</span><span><AtSign/> Instagram</span><span><MessageCircle/> Zalo OA</span><span><Send/> Telegram</span><span><MessageCircle/> TikTok</span></div>
    </section>
 
