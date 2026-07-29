@@ -5,5 +5,8 @@ release/
 *.log
 *.tsbuildinfo
 server-data/
+android/local.properties
+android/keystore.properties
+*.jks
 work-embedded-test-*/
 work-smoke-*/

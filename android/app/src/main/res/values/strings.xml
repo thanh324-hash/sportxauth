@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BOT 68</string>
+    <string name="title_activity_main">BOT 68</string>
+    <string name="package_name">vn.bot68.mobile</string>
+    <string name="custom_url_scheme">vn.bot68.mobile</string>
+</resources>

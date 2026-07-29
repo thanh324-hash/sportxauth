@@ -1,6 +1,6 @@
 {
   "name": "bot-68",
-  "version": "0.11.5",
+  "version": "0.12.0",
   "private": true,
   "description": "BOT 68 - Omnichannel customer care desktop application",
   "main": "electron/main.cjs",
@@ -23,6 +23,9 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/browser": "^8.0.1",
+    "@capacitor/core": "^8.4.2",
     "dexie": "latest",
     "dexie-react-hooks": "latest",
     "express": "latest",
@@ -31,6 +34,7 @@
     "react-dom": "latest"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.2",
     "@types/express": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
@@ -42,7 +46,7 @@
     "electron-builder": "latest",
     "fake-indexeddb": "latest",
     "tsx": "latest",
-    "typescript": "latest",
+    "typescript": "^5.9.3",
     "vite": "latest",
     "wait-on": "latest"
   },
