@@ -83,6 +83,7 @@ export function openDatabase(filename) {
   ensureColumn(db,'channel_connections','webhook_secret_hash','TEXT')
   ensureColumn(db,'channel_connections','metadata',"TEXT NOT NULL DEFAULT '{}'")
   ensureColumn(db,'sync_events','source_connection_id','TEXT')
+  ensureColumn(db,'customers','address',"TEXT NOT NULL DEFAULT ''")
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS sync_event_dedupe ON sync_events(tenant_id,provider,source_connection_id,external_id,event_type) WHERE source_connection_id IS NOT NULL AND external_id IS NOT NULL')
   return db
 }
