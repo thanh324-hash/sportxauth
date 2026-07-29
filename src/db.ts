@@ -40,7 +40,8 @@ export async function seedDatabase(tenantId:string) {
 export async function applySyncEvents(events:Omit<SyncEvent,'tenantId'>[],tenantId:string){
   await db.transaction('rw',db.contacts,db.conversations,db.messages,db.syncEvents,async()=>{
     for(const event of events){
-      await db.syncEvents.put({...event,tenantId})
+      const localEventId=`${tenantId}:${event.id}`;if(await db.syncEvents.get(localEventId))continue
+      await db.syncEvents.put({...event,id:localEventId,tenantId})
       const payload=event.payload;if(event.type!=='message'||!payload?.conversationId||!payload?.senderId)continue
       const contactId=`${tenantId}:${event.provider}:${payload.senderId}`,conversationId=`${tenantId}:${event.provider}:${event.connectionId||'channel'}:${payload.conversationId}`,timestamp=Number(payload.timestamp||event.createdAt),name=String(payload.senderName||`${event.provider} ${payload.senderId}`),initials=name.split(/\s+/).slice(-2).map((x:string)=>x[0]).join('').toUpperCase()
       const existingContact=await db.contacts.get(contactId);if(!existingContact)await db.contacts.add({id:contactId,tenantId,name,channel:event.provider,avatar:initials||'KH',tags:['Khách mới'],externalId:String(payload.senderId)});else if(payload.senderName&&existingContact.name!==name)await db.contacts.update(contactId,{name,avatar:initials||existingContact.avatar})
