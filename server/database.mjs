@@ -43,6 +43,15 @@ export function openDatabase(filename) {
       created_at INTEGER NOT NULL, last_used_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS media_assets_tenant_created ON media_assets(tenant_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS staff_activity (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      connection_id TEXT REFERENCES channel_connections(id) ON DELETE SET NULL,
+      provider TEXT NOT NULL, activity_type TEXT NOT NULL CHECK(activity_type IN ('message','image')),
+      customer_key TEXT NOT NULL, created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS staff_activity_period ON staff_activity(tenant_id, user_id, created_at);
+    CREATE INDEX IF NOT EXISTS staff_activity_customer ON staff_activity(tenant_id, customer_key, created_at);
     CREATE TABLE IF NOT EXISTS customers (
       id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       name TEXT NOT NULL, phone TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',

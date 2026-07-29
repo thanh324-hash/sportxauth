@@ -55,6 +55,7 @@ test('Meta OAuth discovers Facebook and Instagram assets then connects selected 
   assert.equal(events.body[0].payload.text,'Xin chào BOT 68');assert.equal(events.body[0].payload.conversationId,'customer-1')
   const crm=await request('/api/customers',{headers:auth});assert.equal(crm.body.length,1);assert.equal(crm.body[0].externalId,'customer-1')
   const facebookChannel=channels.body.find(channel=>channel.provider==='facebook'),sent=await request('/api/messages/send',{method:'POST',headers:auth,body:JSON.stringify({connectionId:facebookChannel.id,recipientId:'customer-1',text:'BOT 68 trả lời Meta'})});assert.equal(sent.status,200);assert.equal(sent.body.externalMessageId,'meta-out-68')
+  const performance=await request('/api/reports/staff-performance?period=day',{headers:auth});assert.equal(performance.status,200);assert.equal(performance.body.canViewTeam,true);assert.equal(performance.body.totals.messages,1);assert.equal(performance.body.totals.customers,1);assert.equal(performance.body.rows[0].messages,1)
 })
 test('Telegram adapter verifies bot, protects webhook, deduplicates updates and sends text',async()=>{
   const owner=await register(5),auth={authorization:`Bearer ${owner.body.token}`},token='680068:abcdefghijklmnopqrstuvwxyz_123456789'
