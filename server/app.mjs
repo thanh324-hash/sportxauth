@@ -188,7 +188,7 @@ export function createApp(config) {
     const flowId=id('oauth'),state=crypto.randomBytes(32).toString('base64url'),now=Date.now()
     const stateHash=crypto.createHash('sha256').update(state).digest('hex')
     db.prepare('INSERT INTO oauth_flows(id,tenant_id,user_id,provider,state_hash,created_at,expires_at) VALUES(?,?,?,?,?,?,?)').run(flowId,req.session.tenantId,req.session.userId,'meta',stateHash,now,now+10*60*1000)
-    const redirectUri=`${config.publicUrl}/oauth/meta/callback`
+    const redirectUri=config.metaRedirectUri||`${config.publicUrl}/oauth/meta/callback`
     const params=new URLSearchParams({client_id:config.metaAppId,redirect_uri:redirectUri,state,response_type:'code',scope:'pages_show_list,pages_manage_metadata,pages_messaging,pages_read_engagement,business_management,instagram_basic,instagram_manage_messages'})
     res.json({flowId,authorizeUrl:`https://www.facebook.com/${config.metaGraphVersion}/dialog/oauth?${params}`})
   })
@@ -198,7 +198,7 @@ export function createApp(config) {
     if(!flow || flow.expires_at<Date.now())return res.status(400).type('html').send(oauthHtml(false,'Phiên kết nối đã hết hạn. Hãy quay lại BOT 68 và thử lại.'))
     if(req.query.error){db.prepare("UPDATE oauth_flows SET status='failed',error=? WHERE id=?").run(String(req.query.error_description||req.query.error),flow.id);return res.status(400).type('html').send(oauthHtml(false,'Facebook không cấp quyền cho BOT 68.'))}
     try{
-      const redirectUri=`${config.publicUrl}/oauth/meta/callback`
+      const redirectUri=config.metaRedirectUri||`${config.publicUrl}/oauth/meta/callback`
       const tokenUrl=new URL(`https://graph.facebook.com/${config.metaGraphVersion}/oauth/access_token`)
       tokenUrl.search=new URLSearchParams({client_id:config.metaAppId,client_secret:config.metaAppSecret,redirect_uri:redirectUri,code:String(req.query.code||'')}).toString()
       const tokenResponse=await config.fetchImpl(tokenUrl);const tokenBody=await tokenResponse.json()
