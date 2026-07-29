@@ -167,7 +167,7 @@ export function createApp(config) {
     const normalized=channelAdapters.zalo.normalize(req.body);if(normalized){db.prepare('INSERT OR IGNORE INTO sync_events(id,tenant_id,provider,event_type,external_id,payload,created_at,source_connection_id) VALUES(?,?,?,?,?,?,?,?)').run(id('evt'),connection.tenant_id,'zalo',normalized.type,normalized.externalEventId,JSON.stringify(normalized),Date.now(),connection.id);upsertSocialCustomer(db,connection.tenant_id,'zalo',normalized)}
     res.sendStatus(200)
   })
-  app.post('/webhooks/meta', (req, res) => {
+  app.post('/webhooks/meta', async(req, res) => {
     if(config.metaAppSecret){
       const received=String(req.headers['x-hub-signature-256']||'').replace(/^sha256=/,'')
       const expected=crypto.createHmac('sha256',config.metaAppSecret).update(req.rawBody||Buffer.alloc(0)).digest('hex')
@@ -177,8 +177,8 @@ export function createApp(config) {
     const entries=Array.isArray(req.body?.entry)?req.body.entry:[]
     const insert=db.prepare('INSERT OR IGNORE INTO sync_events(id,tenant_id,provider,event_type,external_id,payload,created_at,source_connection_id) VALUES(?,?,?,?,?,?,?,?)')
     for(const entry of entries){
-      const connections=db.prepare("SELECT id,tenant_id,provider FROM channel_connections WHERE provider IN ('facebook','instagram') AND external_id=?").all(String(entry.id))
-      for(const connection of connections)for(const normalized of channelAdapters[connection.provider].normalizeEntry(entry)){insert.run(id('evt'),connection.tenant_id,connection.provider,normalized.type,normalized.externalEventId,JSON.stringify(normalized),Date.now(),connection.id);upsertSocialCustomer(db,connection.tenant_id,connection.provider,normalized)}
+      const connections=db.prepare("SELECT id,tenant_id,provider,encrypted_token FROM channel_connections WHERE provider IN ('facebook','instagram') AND external_id=?").all(String(entry.id))
+      for(const connection of connections)for(const normalized of channelAdapters[connection.provider].normalizeEntry(entry)){try{const token=decryptSecret(connection.encrypted_token,config.encryptionSecret),profileUrl=new URL(`https://graph.facebook.com/${config.metaGraphVersion}/${normalized.senderId}`);profileUrl.search=new URLSearchParams({fields:'name,first_name,last_name,profile_pic',access_token:token}).toString();const profileResponse=await config.fetchImpl(profileUrl);const profile=await profileResponse.json();if(profileResponse.ok&&profile.name){normalized.senderName=String(profile.name);normalized.profilePic=String(profile.profile_pic||'')}}catch{}insert.run(id('evt'),connection.tenant_id,connection.provider,normalized.type,normalized.externalEventId,JSON.stringify(normalized),Date.now(),connection.id);upsertSocialCustomer(db,connection.tenant_id,connection.provider,normalized)}
     }
     res.sendStatus(200)
   })

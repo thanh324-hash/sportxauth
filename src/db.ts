@@ -43,10 +43,10 @@ export async function applySyncEvents(events:Omit<SyncEvent,'tenantId'>[],tenant
       await db.syncEvents.put({...event,tenantId})
       const payload=event.payload;if(event.type!=='message'||!payload?.conversationId||!payload?.senderId)continue
       const contactId=`${tenantId}:${event.provider}:${payload.senderId}`,conversationId=`${tenantId}:${event.provider}:${event.connectionId||'channel'}:${payload.conversationId}`,timestamp=Number(payload.timestamp||event.createdAt),name=String(payload.senderName||`${event.provider} ${payload.senderId}`),initials=name.split(/\s+/).slice(-2).map((x:string)=>x[0]).join('').toUpperCase()
-      const existingContact=await db.contacts.get(contactId);if(!existingContact)await db.contacts.add({id:contactId,tenantId,name,channel:event.provider,avatar:initials||'KH',tags:['Khách mới'],externalId:String(payload.senderId)})
+      const existingContact=await db.contacts.get(contactId);if(!existingContact)await db.contacts.add({id:contactId,tenantId,name,channel:event.provider,avatar:initials||'KH',tags:['Khách mới'],externalId:String(payload.senderId)});else if(payload.senderName&&existingContact.name!==name)await db.contacts.update(contactId,{name,avatar:initials||existingContact.avatar})
       const existingConversation=await db.conversations.get(conversationId)
-      await db.conversations.put({id:conversationId,tenantId,contactId,channel:event.provider,preview:String(payload.text||'[Tệp đính kèm]'),unread:(existingConversation?.unread||0)+1,updatedAt:timestamp,assignee:existingConversation?.assignee||'Chưa giao',status:existingConversation?.status||'new',connectionId:event.connectionId,externalConversationId:String(payload.conversationId)})
-      await db.messages.put({id:`${tenantId}:${event.provider}:${payload.messageId||event.externalId||event.id}`,tenantId,conversationId,from:'customer',text:String(payload.text||'[Tệp đính kèm]'),createdAt:timestamp})
+      const outgoing=payload.direction==='outgoing';await db.conversations.put({id:conversationId,tenantId,contactId,channel:event.provider,preview:String(payload.text||'[Tệp đính kèm]'),unread:outgoing?(existingConversation?.unread||0):(existingConversation?.unread||0)+1,updatedAt:timestamp,assignee:existingConversation?.assignee||'Chưa giao',status:existingConversation?.status||'new',connectionId:event.connectionId,externalConversationId:String(payload.conversationId)})
+      await db.messages.put({id:`${tenantId}:${event.provider}:${payload.messageId||event.externalId||event.id}`,tenantId,conversationId,from:outgoing?'agent':'customer',text:String(payload.text||'[Tệp đính kèm]'),createdAt:timestamp})
     }
   })
 }
