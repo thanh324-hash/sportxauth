@@ -76,7 +76,7 @@ const stopEmbeddedServer = () => {
 
 const createWindow = () => {
   const win = new BrowserWindow({
-    width: 1480, height: 920, minWidth: 1080, minHeight: 680,
+    width: 1480, height: 920, minWidth: 900, minHeight: 620,
     backgroundColor: '#0b1220', title: 'BOT 68',
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false }
   })
@@ -92,8 +92,11 @@ const createWindow = () => {
 }
 
 app.whenReady().then(async () => {
-  try { await startEmbeddedServer() }
-  catch (error) { localServerError = error instanceof Error ? error.message : String(error) }
+  const needsLocalServer = process.env.BOT68_ENABLE_LOCAL_SERVER === '1' || process.env.BOT68_SMOKE_EMBEDDED === '1'
+  if (needsLocalServer) {
+    try { await startEmbeddedServer() }
+    catch (error) { localServerError = error instanceof Error ? error.message : String(error) }
+  }
   ipcMain.handle('open-external', (_, url) => shell.openExternal(url))
   ipcMain.handle('app-info', () => ({ version: app.getVersion(), dataPath: app.getPath('userData'), localServerUrl, localServerStatus: localServerUrl ? 'ready' : 'error', localServerError }))
   const sessionPath = path.join(app.getPath('userData'), 'session.bin')
