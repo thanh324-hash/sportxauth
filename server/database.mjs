@@ -37,6 +37,12 @@ export function openDatabase(filename) {
       title TEXT NOT NULL, content TEXT NOT NULL, tags TEXT NOT NULL DEFAULT '[]',
       enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS media_assets (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name TEXT NOT NULL, mime_type TEXT NOT NULL, data BLOB NOT NULL,
+      created_at INTEGER NOT NULL, last_used_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS media_assets_tenant_created ON media_assets(tenant_id, created_at DESC);
     CREATE TABLE IF NOT EXISTS customers (
       id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
       name TEXT NOT NULL, phone TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '',

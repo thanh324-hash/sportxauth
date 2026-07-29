@@ -3,17 +3,19 @@ import Dexie, { type EntityTable } from 'dexie'
 export type Channel = 'facebook' | 'instagram' | 'zalo' | 'telegram' | 'tiktok'
 export interface Contact { id: string; tenantId:string; name: string; phone?: string; address?:string; channel: Channel; avatar: string; tags: string[]; note?: string; externalId?:string }
 export interface Conversation { id: string; tenantId:string; contactId: string; channel: Channel; preview: string; unread: number; updatedAt: number; assignee: string; status: 'new'|'open'|'waiting'|'closed'; connectionId?:string; externalConversationId?:string }
-export interface Message { id: string; tenantId:string; conversationId: string; from: 'customer'|'agent'|'ai'; text: string; createdAt: number }
+export interface Message { id: string; tenantId:string; conversationId: string; from: 'customer'|'agent'|'ai'; text: string; createdAt: number; imageUrl?:string; imageName?:string }
+export interface MediaAsset { id:string; tenantId:string; name:string; mimeType:string; dataUrl:string; createdAt:number; lastUsedAt:number }
 export interface Order { id: string; tenantId:string; contactId: string; total: number; status: 'draft'|'confirmed'|'shipping'|'completed'; createdAt: number }
 export interface SyncEvent { id:string; tenantId:string; provider:Channel; type:string; externalId?:string; connectionId?:string; payload:any; createdAt:number }
 
 export const db = new Dexie('bot68-local') as Dexie & {
   contacts: EntityTable<Contact, 'id'>; conversations: EntityTable<Conversation, 'id'>;
-  messages: EntityTable<Message, 'id'>; orders: EntityTable<Order, 'id'>; syncEvents:EntityTable<SyncEvent,'id'>
+  messages: EntityTable<Message, 'id'>; orders: EntityTable<Order, 'id'>; syncEvents:EntityTable<SyncEvent,'id'>; mediaAssets:EntityTable<MediaAsset,'id'>
 }
 db.version(1).stores({ contacts: 'id,name,channel', conversations: 'id,contactId,channel,updatedAt,status', messages: 'id,conversationId,createdAt', orders: 'id,contactId,status,createdAt' })
 db.version(2).stores({ contacts: 'id,name,channel', conversations: 'id,contactId,channel,updatedAt,status', messages: 'id,conversationId,createdAt', orders: 'id,contactId,status,createdAt', syncEvents:'id,provider,createdAt' })
 db.version(3).stores({contacts:'id,tenantId,[tenantId+name],channel',conversations:'id,tenantId,[tenantId+updatedAt],contactId,channel,status',messages:'id,tenantId,[tenantId+conversationId],createdAt',orders:'id,tenantId,[tenantId+createdAt],contactId,status',syncEvents:'id,tenantId,[tenantId+createdAt],provider'}).upgrade(async transaction=>{for(const tableName of ['contacts','conversations','messages','orders','syncEvents'])await transaction.table(tableName).toCollection().modify(item=>{if(!item.tenantId)item.tenantId='legacy'})})
+db.version(4).stores({contacts:'id,tenantId,[tenantId+name],channel',conversations:'id,tenantId,[tenantId+updatedAt],contactId,channel,status',messages:'id,tenantId,[tenantId+conversationId],createdAt',orders:'id,tenantId,[tenantId+createdAt],contactId,status',syncEvents:'id,tenantId,[tenantId+createdAt],provider',mediaAssets:'id,tenantId,[tenantId+createdAt],lastUsedAt'})
 
 export async function seedDatabase(tenantId:string) {
   if (await db.contacts.where('tenantId').equals(tenantId).count()) return
@@ -47,7 +49,8 @@ export async function applySyncEvents(events:Omit<SyncEvent,'tenantId'>[],tenant
       const existingContact=await db.contacts.get(contactId);if(!existingContact)await db.contacts.add({id:contactId,tenantId,name,phone:payload.detectedPhone||undefined,address:payload.detectedAddress||undefined,channel:event.provider,avatar:initials||'KH',tags:['Khách mới'],externalId:String(payload.senderId)});else {const changes:Partial<Contact>={};if(payload.senderName&&existingContact.name!==name){changes.name=name;changes.avatar=initials||existingContact.avatar}if(payload.detectedPhone)changes.phone=payload.detectedPhone;if(payload.detectedAddress)changes.address=payload.detectedAddress;if(Object.keys(changes).length)await db.contacts.update(contactId,changes)}
       const existingConversation=await db.conversations.get(conversationId)
       const outgoing=payload.direction==='outgoing';await db.conversations.put({id:conversationId,tenantId,contactId,channel:event.provider,preview:String(payload.text||'[Tệp đính kèm]'),unread:outgoing?(existingConversation?.unread||0):(existingConversation?.unread||0)+1,updatedAt:timestamp,assignee:existingConversation?.assignee||'Chưa giao',status:existingConversation?.status||'new',connectionId:event.connectionId,externalConversationId:String(payload.conversationId)})
-      await db.messages.put({id:`${tenantId}:${event.provider}:${payload.messageId||event.externalId||event.id}`,tenantId,conversationId,from:outgoing?'agent':'customer',text:String(payload.text||'[Tệp đính kèm]'),createdAt:timestamp})
+      const image=Array.isArray(payload.attachments)?payload.attachments.find((item:any)=>item?.type==='image'||item?.payload?.url):null
+      await db.messages.put({id:`${tenantId}:${event.provider}:${payload.messageId||event.externalId||event.id}`,tenantId,conversationId,from:outgoing?'agent':'customer',text:String(payload.text||''),createdAt:timestamp,imageUrl:image?.payload?.url||payload.imageUrl||undefined,imageName:payload.imageName||undefined})
     }
   })
 }
