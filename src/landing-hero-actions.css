@@ -1,0 +1,9 @@
+.hero-actions .mobile-label{display:none}
+
+@media(max-width:600px){
+  .hero-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+  .hero-actions button,.hero-actions a{min-width:0;justify-content:center;padding:11px 5px;gap:4px;font-size:10px;white-space:nowrap}
+  .hero-actions svg{width:14px}
+  .hero-actions .desktop-label{display:none}
+  .hero-actions .mobile-label{display:inline}
+}
