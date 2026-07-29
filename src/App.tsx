@@ -20,7 +20,18 @@ const channelName:Record<Channel,string> = {facebook:'Facebook',instagram:'Insta
 
 function App(){
   const [session,setSession]=useState<ServerSession|null|undefined>(undefined)
-  useEffect(()=>{loadSession().then(setSession)},[])
+  useEffect(()=>{loadSession().then(saved=>{
+    if(saved){setSession(saved);return}
+    if(!window.bot68){
+      setSession({
+        serverUrl:'',token:'',offline:true,
+        user:{id:'web-demo',tenantId:'web-demo',name:'Khách dùng thử',email:'demo@sportxauth.com',role:'owner'},
+        tenant:{id:'web-demo',name:'Cửa hàng Demo BOT 68',slug:'web-demo',plan:'demo'}
+      })
+      return
+    }
+    setSession(null)
+  })},[])
   if(session===undefined)return <div className="app-loading"><Bot/><span>Đang mở BOT 68...</span></div>
   if(!session)return <AuthScreen onAuthenticated={setSession}/>
   return <AuthenticatedApp session={session} onLogout={async()=>{await clearSession();setSession(null)}}/>
