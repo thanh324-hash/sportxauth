@@ -8,6 +8,7 @@ import { useServerSync, type SyncState } from './useServerSync'
 import { CustomersPage, OrdersPage, ProductsPage, ReportsPage, TeamPage } from './BusinessPages'
 import './topbar-fix.css'
 import SettingsPage from './SettingsPage'
+import LandingPage from './LandingPage'
 
 type Page = 'dashboard'|'inbox'|'customers'|'orders'|'products'|'ai'|'team'|'reports'|'connections'|'settings'
 const nav: Array<[Page,string,any]> = [
@@ -20,21 +21,16 @@ const channelName:Record<Channel,string> = {facebook:'Facebook',instagram:'Insta
 
 function App(){
   const [session,setSession]=useState<ServerSession|null|undefined>(undefined)
+  const [webAuthOpen,setWebAuthOpen]=useState(false)
   useEffect(()=>{loadSession().then(saved=>{
+    if(!window.bot68&&saved?.user.id==='web-demo'){clearSession();setSession(null);return}
     if(saved){setSession(saved);return}
-    if(!window.bot68){
-      setSession({
-        serverUrl:'',token:'',offline:true,
-        user:{id:'web-demo',tenantId:'web-demo',name:'Khách dùng thử',email:'demo@sportxauth.com',role:'owner'},
-        tenant:{id:'web-demo',name:'Cửa hàng Demo BOT 68',slug:'web-demo',plan:'demo'}
-      })
-      return
-    }
     setSession(null)
   })},[])
   if(session===undefined)return <div className="app-loading"><Bot/><span>Đang mở BOT 68...</span></div>
+  if(!session&&!window.bot68&&!webAuthOpen)return <LandingPage onLogin={()=>setWebAuthOpen(true)}/>
   if(!session)return <AuthScreen onAuthenticated={setSession}/>
-  return <AuthenticatedApp session={session} onLogout={async()=>{await clearSession();setSession(null)}}/>
+  return <AuthenticatedApp session={session} onLogout={async()=>{await clearSession();setSession(null);setWebAuthOpen(false)}}/>
 }
 function AuthenticatedApp({session,onLogout}:{session:ServerSession;onLogout:()=>void}){
  const requested=location.hash.slice(1);const initialPage=nav.some(([id])=>id===requested)?requested as Page:'inbox'
