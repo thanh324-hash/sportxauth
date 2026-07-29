@@ -1,6 +1,6 @@
 {
   "name": "bot-68",
-  "version": "0.11.4",
+  "version": "0.11.5",
   "private": true,
   "description": "BOT 68 - Omnichannel customer care desktop application",
   "main": "electron/main.cjs",
