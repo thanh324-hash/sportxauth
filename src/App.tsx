@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { AtSign, BarChart3, Bot, Boxes, CheckCircle2, ChevronDown, CircleHelp, ClipboardList, ContactRound, Download, ExternalLink, GraduationCap, Inbox, LayoutDashboard, LoaderCircle, LogOut, MessageCircle, MessagesSquare, Monitor, MoreHorizontal, Package, Plus, RefreshCw, Save, Search, Send, Settings, ShieldCheck, Sparkles, Store, Tag, Trash2, Users, Wifi, X } from 'lucide-react'
+import { AtSign, BarChart3, Bot, Boxes, CheckCircle2, ChevronDown, CircleHelp, ClipboardList, ContactRound, ExternalLink, GraduationCap, Inbox, LayoutDashboard, LoaderCircle, Menu, MessageCircle, MessagesSquare, MoreHorizontal, Package, Plus, RefreshCw, Save, Search, Send, Settings, ShieldCheck, Sparkles, Store, Tag, Trash2, Users, Wifi, X } from 'lucide-react'
 import { db, seedDatabase, type Channel, type Conversation, type Message } from './db'
 import AuthScreen from './AuthScreen'
 import { apiRequest, clearSession, loadSession, type ServerSession } from './api'
 import { useServerSync, type SyncState } from './useServerSync'
 import { CustomersPage, OrdersPage, ProductsPage, ReportsPage, TeamPage } from './BusinessPages'
 import './topbar-fix.css'
+import './responsive.css'
 import SettingsPage from './SettingsPage'
 import LandingPage from './LandingPage'
 
@@ -31,17 +32,14 @@ function App(){
   if(!session&&!window.bot68&&!webAuthOpen)return <LandingPage onLogin={()=>setWebAuthOpen(true)}/>
   if(!session)return <AuthScreen onAuthenticated={setSession}/>
   const logout=async()=>{await clearSession();setSession(null);setWebAuthOpen(false)}
-  if(!window.bot68)return <WebPortal session={session} onLogout={logout}/>
   return <AuthenticatedApp session={session} onLogout={logout}/>
-}
-function WebPortal({session,onLogout}:{session:ServerSession;onLogout:()=>void}){
- return <div className="web-portal"><header><div className="landing-brand"><span><Bot/></span><b>BOT 68</b></div><div><span>{session.user.name} · {session.tenant.name}</span><button onClick={onLogout}><LogOut/> Đăng xuất</button></div></header><div className="web-portal-body"><section className="portal-welcome"><div><small>TRUNG TÂM TÀI KHOẢN</small><h1>Xin chào, {session.user.name}</h1><p>Quản lý tài khoản, máy tính liên kết và các kênh mạng xã hội của cửa hàng.</p></div><ShieldCheck/></section><section className="device-card"><Monitor/><div><b>Ứng dụng BOT 68 Windows</b><p>Dữ liệu khách hàng và hội thoại được lưu trên máy tính đã liên kết.</p></div><a href="https://github.com/thanh324-hash/sportxauth/releases/latest/download/BOT-68-Setup-0.10.0.exe"><Download/> Tải ứng dụng</a></section><section className="portal-connections"><div className="module-hero"><div className="hero-icon"><Wifi/></div><div><h2>Kết nối mạng xã hội</h2><p>Đăng nhập và cấp quyền cho các kênh bằng API chính thức.</p></div></div><Connections session={session}/></section></div></div>
 }
 function AuthenticatedApp({session,onLogout}:{session:ServerSession;onLogout:()=>void}){
  const requested=location.hash.slice(1);const initialPage=nav.some(([id])=>id===requested)?requested as Page:'inbox'
- const [page,setPage]=useState<Page>(initialPage);const [selected,setSelected]=useState('v1');const [draft,setDraft]=useState('');const [aiOpen,setAiOpen]=useState(true);const syncState=useServerSync(session)
+ const [page,setPage]=useState<Page>(initialPage);const [selected,setSelected]=useState('v1');const [draft,setDraft]=useState('');const [aiOpen,setAiOpen]=useState(true);const [mobileNav,setMobileNav]=useState(false);const syncState=useServerSync(session)
  useEffect(()=>{if(session.offline)seedDatabase(session.tenant.id)},[session.offline,session.tenant.id])
- return <div className="app-shell"><Sidebar page={page} setPage={setPage} session={session}/><main><Topbar page={page} session={session} syncState={syncState} onLogout={onLogout}/>{page==='inbox'?<InboxPage session={session} selected={selected} setSelected={setSelected} draft={draft} setDraft={setDraft} aiOpen={aiOpen} setAiOpen={setAiOpen}/>:<ModulePage page={page} session={session}/>}</main></div>
+ const navigate=(next:Page)=>{setPage(next);location.hash=next;setMobileNav(false)}
+ return <div className={'app-shell '+(mobileNav?'nav-open':'')}><button className="mobile-menu" onClick={()=>setMobileNav(!mobileNav)} aria-label="Mở trình đơn">{mobileNav?<X/>:<Menu/>}</button>{mobileNav&&<button className="nav-backdrop" onClick={()=>setMobileNav(false)} aria-label="Đóng trình đơn"/>}<Sidebar page={page} setPage={navigate} session={session}/><main><Topbar page={page} session={session} syncState={syncState} onLogout={onLogout}/>{page==='inbox'?<InboxPage session={session} selected={selected} setSelected={setSelected} draft={draft} setDraft={setDraft} aiOpen={aiOpen} setAiOpen={setAiOpen}/>:<ModulePage page={page} session={session}/>}</main></div>
 }
 
 function Sidebar({page,setPage,session}:{page:Page;setPage:(p:Page)=>void;session:ServerSession}){
