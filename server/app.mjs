@@ -140,14 +140,12 @@ export function createApp(config) {
   })
   app.get('/api/sync/events', authenticate, (req, res) => {
     const limit=Math.min(Number(req.query.limit)||100,500)
-    const rows=db.prepare('SELECT id,provider,event_type,external_id,payload,created_at,source_connection_id FROM sync_events WHERE tenant_id=? AND delivered_at IS NULL ORDER BY created_at LIMIT ?').all(req.session.tenantId,limit)
+    const rows=db.prepare('SELECT * FROM (SELECT id,provider,event_type,external_id,payload,created_at,source_connection_id FROM sync_events WHERE tenant_id=? ORDER BY created_at DESC LIMIT ?) ORDER BY created_at').all(req.session.tenantId,limit)
     res.json(rows.map(r=>({id:r.id,provider:r.provider,type:r.event_type,externalId:r.external_id,connectionId:r.source_connection_id,payload:JSON.parse(r.payload),createdAt:r.created_at})))
   })
   app.post('/api/sync/ack', authenticate, (req, res) => {
     const ids=Array.isArray(req.body?.ids)?req.body.ids.slice(0,500):[]
-    const update=db.prepare('UPDATE sync_events SET delivered_at=? WHERE id=? AND tenant_id=?')
-    db.exec('BEGIN'); try { for(const eventId of ids)update.run(Date.now(),eventId,req.session.tenantId);db.exec('COMMIT') }catch(e){db.exec('ROLLBACK');throw e}
-    res.json({ ok:true, acknowledged:ids.length })
+    res.json({ ok:true, acknowledged:ids.length, delivery:'per-device-local' })
   })
   app.get('/webhooks/meta', (req, res) => {
     if (req.query['hub.mode']==='subscribe' && req.query['hub.verify_token']===config.metaVerifyToken) return res.status(200).send(req.query['hub.challenge'])
