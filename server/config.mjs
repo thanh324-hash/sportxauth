@@ -12,6 +12,7 @@ export function loadConfig(overrides = {}) {
     metaAppId: process.env.META_APP_ID || '',
     metaAppSecret: process.env.META_APP_SECRET || '',
     metaGraphVersion: process.env.META_GRAPH_VERSION || 'v21.0',
+    metaRedirectUri: process.env.META_REDIRECT_URI || '',
     aiBaseUrl: (process.env.BOT68_AI_BASE_URL || '').replace(/\/$/,''),
     aiApiKey: process.env.BOT68_AI_API_KEY || '',
     aiModel: process.env.BOT68_AI_MODEL || '',
