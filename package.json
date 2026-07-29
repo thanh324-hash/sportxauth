@@ -1,10 +1,12 @@
 {
   "name": "bot-68",
-  "version": "0.11.3",
+  "version": "0.11.4",
   "private": true,
   "description": "BOT 68 - Omnichannel customer care desktop application",
   "main": "electron/main.cjs",
-  "author": { "name": "BOT 68" },
+  "author": {
+    "name": "BOT 68"
+  },
   "homepage": "https://github.com/thanh324-hash/sportxauth",
   "license": "UNLICENSED",
   "scripts": {
