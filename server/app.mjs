@@ -221,13 +221,15 @@ export function createApp(config) {
     const assets=flow.status==='ready'?db.prepare('SELECT id,provider,external_id,display_name,parent_external_id,metadata FROM oauth_assets WHERE flow_id=? AND tenant_id=?').all(flow.id,req.session.tenantId).map(row=>({id:row.id,provider:row.provider,externalId:row.external_id,displayName:row.display_name,parentExternalId:row.parent_external_id,metadata:JSON.parse(row.metadata)})):[]
     res.json({status:flow.expires_at<Date.now()&&flow.status==='pending'?'expired':flow.status,error:flow.error,assets})
   })
-  app.post('/api/oauth/meta/complete',authenticate,ownerOnly,(req,res)=>{
+  app.post('/api/oauth/meta/complete',authenticate,ownerOnly,async(req,res)=>{
     const selected=Array.isArray(req.body?.assetIds)?req.body.assetIds.slice(0,200):[]
     const flow=db.prepare("SELECT * FROM oauth_flows WHERE id=? AND tenant_id=? AND user_id=? AND status='ready'").get(req.body?.flowId,req.session.tenantId,req.session.userId)
     if(!flow)return res.status(404).json({error:'Không tìm thấy phiên kết nối sẵn sàng'})
     const getAsset=db.prepare('SELECT * FROM oauth_assets WHERE id=? AND flow_id=? AND tenant_id=?'),upsert=db.prepare("INSERT INTO channel_connections(id,tenant_id,provider,external_id,display_name,encrypted_token,status,created_at) VALUES(?,?,?,?,?,?,'active',?) ON CONFLICT(tenant_id,provider,external_id) DO UPDATE SET display_name=excluded.display_name,encrypted_token=excluded.encrypted_token,status='active'")
-    let connected=0;db.exec('BEGIN');try{for(const assetId of selected){const asset=getAsset.get(assetId,flow.id,req.session.tenantId);if(asset){upsert.run(id('chn'),req.session.tenantId,asset.provider,asset.external_id,asset.display_name,asset.encrypted_token,Date.now());connected++}}db.prepare("UPDATE oauth_flows SET status='completed' WHERE id=?").run(flow.id);db.exec('COMMIT')}catch(error){db.exec('ROLLBACK');throw error}
-    res.json({ok:true,connected})
+    let connected=0;const facebookAssets=[];db.exec('BEGIN');try{for(const assetId of selected){const asset=getAsset.get(assetId,flow.id,req.session.tenantId);if(asset){upsert.run(id('chn'),req.session.tenantId,asset.provider,asset.external_id,asset.display_name,asset.encrypted_token,Date.now());if(asset.provider==='facebook')facebookAssets.push(asset);connected++}}db.prepare("UPDATE oauth_flows SET status='completed' WHERE id=?").run(flow.id);db.exec('COMMIT')}catch(error){db.exec('ROLLBACK');throw error}
+    let subscribed=0;const subscriptionErrors=[]
+    for(const asset of facebookAssets){try{const url=new URL(`https://graph.facebook.com/${config.metaGraphVersion}/${asset.external_id}/subscribed_apps`);url.search=new URLSearchParams({subscribed_fields:'messages,message_deliveries,message_reads,message_echoes,messaging_postbacks,messaging_optins,messaging_referrals,feed',access_token:decryptSecret(asset.encrypted_token,config.encryptionSecret)}).toString();const response=await config.fetchImpl(url,{method:'POST'});const body=await response.json();if(!response.ok||body.success!==true)throw new Error(body.error?.message||'Meta khong chap nhan dang ky webhook');subscribed++}catch(error){subscriptionErrors.push({page:asset.display_name,error:error.message})}}
+    res.json({ok:true,connected,subscribed,subscriptionErrors})
   })
   app.post('/api/messages/send',authenticate,async(req,res,next)=>{
     try{
