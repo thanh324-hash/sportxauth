@@ -2,8 +2,8 @@ import { AtSign, Bot, CheckCircle2, Download, HardDrive, LockKeyhole, MessageCir
 import './landing.css'
 import './landing-hero-actions.css'
 
-const windowsDownload='https://github.com/thanh324-hash/sportxauth/releases/download/v0.14.0/BOT-68-Setup-0.14.0.exe'
-const androidDownload='https://github.com/thanh324-hash/sportxauth/releases/download/v0.14.0/BOT-68-Android-0.14.0.apk'
+const windowsDownload='https://github.com/thanh324-hash/sportxauth/releases/download/v0.15.0/BOT-68-Setup-0.15.0.exe'
+const androidDownload='https://github.com/thanh324-hash/sportxauth/releases/download/v0.15.0/BOT-68-Android-0.15.0.apk'
 
 export default function LandingPage({onLogin}:{onLogin:()=>void}){
  return <div className="landing">
@@ -46,9 +46,9 @@ export default function LandingPage({onLogin}:{onLogin:()=>void}){
    <section className="download-section" id="tai-app">
     <div className="download-heading"><small>TẢI ỨNG DỤNG</small><h2>Chọn cách làm việc của bạn</h2><p>Bản web dùng ngay; bản Windows có bộ nhớ đệm cục bộ và phù hợp để trực chat liên tục.</p></div>
     <div className="download-grid">
-     <a className="download-card windows" href={windowsDownload}><span className="download-icon"><Monitor/></span><div><small>MÁY TÍNH</small><h3>BOT 68 cho Windows</h3><p>Windows 10/11 · 64-bit</p><b><Download/> Tải BOT 68 v0.14.0</b></div></a>
+     <a className="download-card windows" href={windowsDownload}><span className="download-icon"><Monitor/></span><div><small>MÁY TÍNH</small><h3>BOT 68 cho Windows</h3><p>Windows 10/11 · 64-bit</p><b><Download/> Tải BOT 68 v0.15.0</b></div></a>
      <button className="download-card web" onClick={onLogin}><span className="download-icon"><Bot/></span><div><small>TRÌNH DUYỆT</small><h3>Dùng BOT 68 trên web</h3><p>Chrome, Edge, Safari · Không cần cài đặt</p><b><CheckCircle2/> Đăng nhập để bắt đầu</b></div></button>
-     <a className="download-card android" href={androidDownload}><span className="download-icon"><Smartphone/></span><div><small>ĐIỆN THOẠI</small><h3>BOT 68 cho Android</h3><p>Android 9 trở lên</p><b><Download/> Tải APK v0.14.0</b></div></a>
+     <a className="download-card android" href={androidDownload}><span className="download-icon"><Smartphone/></span><div><small>ĐIỆN THOẠI</small><h3>BOT 68 cho Android</h3><p>Android 9 trở lên</p><b><Download/> Tải APK v0.15.0</b></div></a>
     </div>
    </section>
   </main>

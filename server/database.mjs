@@ -99,6 +99,8 @@ export function openDatabase(filename) {
   ensureColumn(db,'channel_connections','metadata',"TEXT NOT NULL DEFAULT '{}'")
   ensureColumn(db,'sync_events','source_connection_id','TEXT')
   ensureColumn(db,'customers','address',"TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db,'users','active','INTEGER NOT NULL DEFAULT 1')
+  ensureColumn(db,'users','session_version','INTEGER NOT NULL DEFAULT 1')
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS sync_event_dedupe ON sync_events(tenant_id,provider,source_connection_id,external_id,event_type) WHERE source_connection_id IS NOT NULL AND external_id IS NOT NULL')
   return db
 }
@@ -106,4 +108,4 @@ export function openDatabase(filename) {
 function ensureColumn(db,table,column,declaration){const exists=db.prepare(`PRAGMA table_info(${table})`).all().some(row=>row.name===column);if(!exists)db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${declaration}`)}
 
 export function publicTenant(row) { return row && { id: row.id, name: row.name, slug: row.slug, plan: row.plan, createdAt: row.created_at } }
-export function publicUser(row) { return row && { id: row.id, tenantId: row.tenant_id, name: row.name, email: row.email, role: row.role, createdAt: row.created_at } }
+export function publicUser(row) { return row && { id: row.id, tenantId: row.tenant_id, name: row.name, email: row.email, role: row.role, active: row.active !== 0, createdAt: row.created_at } }
