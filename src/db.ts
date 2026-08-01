@@ -54,3 +54,18 @@ export async function applySyncEvents(events:Omit<SyncEvent,'tenantId'>[],tenant
     }
   })
 }
+
+export async function reconcileActiveConnections(activeConnectionIds:string[],tenantId:string){
+  const active=new Set(activeConnectionIds)
+  let removed=0
+  await db.transaction('rw',db.conversations,db.messages,async()=>{
+    const stale=(await db.conversations.where('tenantId').equals(tenantId).toArray())
+      .filter(conversation=>conversation.connectionId&&!active.has(conversation.connectionId))
+    for(const conversation of stale){
+      await db.messages.where('[tenantId+conversationId]').equals([tenantId,conversation.id]).delete()
+      await db.conversations.delete(conversation.id)
+      removed++
+    }
+  })
+  return removed
+}

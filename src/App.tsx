@@ -173,7 +173,7 @@ function AuthenticatedApp({
   const [draft, setDraft] = useState("");
   const [aiOpen, setAiOpen] = useState(true);
   const [mobileNav, setMobileNav] = useState(false);
-  const syncState = useServerSync(session);
+  const sync = useServerSync(session);
   useEffect(() => {
     if (session.offline) seedDatabase(session.tenant.id);
   }, [session.offline, session.tenant.id]);
@@ -203,7 +203,9 @@ function AuthenticatedApp({
         <Topbar
           page={page}
           session={session}
-          syncState={syncState}
+          syncState={sync.state}
+          refreshing={sync.refreshing}
+          onRefresh={sync.refresh}
           onLogout={onLogout}
         />
         {page === "inbox" ? (
@@ -302,11 +304,15 @@ function Topbar({
   page,
   session,
   syncState,
+  refreshing,
+  onRefresh,
   onLogout,
 }: {
   page: Page;
   session: ServerSession;
   syncState: SyncState;
+  refreshing: boolean;
+  onRefresh: () => void;
   onLogout: () => void;
 }) {
   const title = nav.find((n) => n[0] === page)?.[1],
@@ -362,6 +368,12 @@ function Topbar({
         </p>
       </div>
       <div className="top-actions">
+        {!session.offline && (
+          <button className="refresh-sync" type="button" onClick={onRefresh} disabled={refreshing} title="Làm mới tin nhắn và trạng thái kênh">
+            <RefreshCw className={refreshing ? "spin" : ""} />
+            <span>Làm mới</span>
+          </button>
+        )}
         <button className={"connection " + syncState}>
           <span className="sync-dot" />
           {label}
@@ -462,7 +474,10 @@ function InboxPage({
   aiOpen: boolean;
   setAiOpen: (b: boolean) => void;
 }) {
-  const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false),
+    [tab, setTab] = useState<"all" | "unread" | "open">("all"),
+    [channelFilter, setChannelFilter] = useState<Channel | "all">("all"),
+    [query, setQuery] = useState("");
   const conversations =
     useLiveQuery(
       async () =>
@@ -479,13 +494,26 @@ function InboxPage({
       () => db.contacts.where("tenantId").equals(session.tenant.id).toArray(),
       [session.tenant.id],
     ) || [];
+  const visibleConversations = conversations.filter((conversation) => {
+    const person = contacts.find((item) => item.id === conversation.contactId);
+    const normalized = query.trim().toLocaleLowerCase();
+    const matchesQuery =
+      !normalized ||
+      `${person?.name || ""} ${person?.phone || ""} ${conversation.preview}`
+        .toLocaleLowerCase()
+        .includes(normalized);
+    const matchesTab =
+      tab === "all" ||
+      (tab === "unread" ? conversation.unread > 0 : conversation.status === "open");
+    return (
+      matchesQuery &&
+      matchesTab &&
+      (channelFilter === "all" || conversation.channel === channelFilter)
+    );
+  });
   const active =
     conversations.find((c) => c.id === selected) || conversations[0];
   const contact = contacts.find((c) => c.id === active?.contactId);
-  useEffect(() => {
-    if (active?.id && active.unread > 0)
-      db.conversations.update(active.id, { unread: 0 });
-  }, [active?.id]);
   const unreadTotal = conversations.reduce(
     (sum, item) => sum + Math.max(0, Number(item.unread) || 0),
     0,
@@ -506,34 +534,34 @@ function InboxPage({
         <div className="filters">
           <div className="search">
             <Search />
-            <input placeholder="Tìm tên, số điện thoại..." />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm tên, số điện thoại..." />
           </div>
           <button>
             <MoreHorizontal />
           </button>
         </div>
         <div className="tabs">
-          <button className="active">
+          <button className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>
             Tất cả <b>{conversations.length}</b>
           </button>
-          <button>
+          <button className={tab === "unread" ? "active" : ""} onClick={() => setTab("unread")}>
             Chưa đọc{" "}
             {unreadTotal > 0 && <b>{unreadTotal > 99 ? "99+" : unreadTotal}</b>}
           </button>
-          <button>Đang mở</button>
+          <button className={tab === "open" ? "active" : ""} onClick={() => setTab("open")}>Đang mở</button>
         </div>
         <div className="channel-chips">
-          <button className="active">Tất cả</button>
+          <button className={channelFilter === "all" ? "active" : ""} onClick={() => setChannelFilter("all")}>Tất cả</button>
           {(["facebook", "instagram", "zalo", "telegram"] as Channel[]).map(
             (c) => (
-              <button title={channelName[c]} key={c}>
+              <button className={channelFilter === c ? "active" : ""} onClick={() => setChannelFilter(c)} title={channelName[c]} key={c}>
                 {channelIcon(c)}
               </button>
             ),
           )}
         </div>
         <div className="threads">
-          {conversations.map((c) => (
+          {visibleConversations.map((c) => (
             <ThreadItem
               key={c.id}
               item={c}
@@ -542,6 +570,7 @@ function InboxPage({
               onClick={() => choose(c.id)}
             />
           ))}
+          {!visibleConversations.length && <div className="empty-threads">Không có cuộc trò chuyện phù hợp.</div>}
         </div>
       </section>
       {active && contact && (
@@ -1428,18 +1457,18 @@ function Connections({ session }: { session: ServerSession }) {
   useEffect(() => {
     load();
   }, []);
-  async function startMeta() {
+  async function startMeta(provider: "facebook" | "instagram") {
     if (session.offline) {
-      setNotice("Hãy đăng nhập máy chủ để kết nối Facebook/Instagram.");
+      setNotice(`Hãy đăng nhập máy chủ để kết nối ${provider === "facebook" ? "Facebook Page" : "Instagram Professional"}.`);
       return;
     }
     setBusy(true);
-    setNotice("Đang mở Facebook trong trình duyệt...");
+    setNotice(provider === "facebook" ? "Đang mở đăng nhập Facebook..." : "Đang mở Meta để cấp quyền riêng cho Instagram Professional...");
     try {
       const flow = await apiRequest<{ flowId: string; authorizeUrl: string }>(
         session.serverUrl,
         "/api/oauth/meta/start",
-        { method: "POST", body: "{}" },
+        { method: "POST", body: JSON.stringify({ provider }) },
         session.token,
       );
       if (window.bot68) await window.bot68.openExternal(flow.authorizeUrl);
@@ -1463,14 +1492,14 @@ function Connections({ session }: { session: ServerSession }) {
             await Browser.close().catch(() => {});
           setAssets(status.assets);
           setSelected(status.assets.map((a) => a.id));
-          setNotice("Đã xác thực. Chọn các Page muốn thêm.");
+          setNotice(provider === "facebook" ? "Đã xác thực Facebook. Chọn các Page muốn thêm." : "Đã xác thực Instagram. Chọn các tài khoản Professional muốn thêm.");
           sessionStorage.setItem("bot68-meta-flow", flow.flowId);
           return;
         }
         if (["failed", "expired"].includes(status.status))
           throw new Error(status.error || "Phiên kết nối hết hạn");
       }
-      throw new Error("Quá thời gian chờ Facebook");
+      throw new Error(`Quá thời gian chờ ${provider === "facebook" ? "Facebook" : "Instagram"}`);
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Không thể kết nối Meta");
     } finally {
@@ -1576,7 +1605,7 @@ function Connections({ session }: { session: ServerSession }) {
     }
   }
   function channelAction(provider: Channel, name: string) {
-    if (provider === "facebook" || provider === "instagram") return startMeta;
+    if (provider === "facebook" || provider === "instagram") return () => startMeta(provider);
     if (provider === "telegram") return () => setTelegramOpen(true);
     if (provider === "zalo") return () => setZaloOpen(true);
     return () =>
@@ -1643,6 +1672,7 @@ function Connections({ session }: { session: ServerSession }) {
                 ) : implemented ? (
                   <>
                     <ExternalLink /> Kết nối
+                    {provider === "facebook" ? " Facebook" : provider === "instagram" ? " Instagram" : ""}
                   </>
                 ) : (
                   <>Tìm hiểu</>
