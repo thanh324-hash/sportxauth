@@ -15,6 +15,7 @@ before(async()=>{
     if(parsed.pathname==='/v3.0/oa/message/cs')return new Response(JSON.stringify({error:0,message:'Success',data:{message_id:'zalo-message-68'}}),{status:200,headers:{'content-type':'application/json'}})
     if(parsed.pathname.endsWith('/oauth/access_token'))return new Response(JSON.stringify({access_token:parsed.searchParams.has('fb_exchange_token')?'long-user-token':'short-user-token'}),{status:200,headers:{'content-type':'application/json'}})
     if(parsed.pathname.endsWith('/me/accounts'))return new Response(JSON.stringify({data:[{id:'page-68',name:'BOT 68 Page',access_token:'page-token-68',instagram_business_account:{id:'ig-68',username:'bot68.official'}}]}),{status:200,headers:{'content-type':'application/json'}})
+    if(parsed.pathname.endsWith('/page-68/subscribed_apps'))return new Response(JSON.stringify({success:true}),{status:200,headers:{'content-type':'application/json'}})
     if(parsed.pathname.endsWith('/page-68/messages'))return new Response(JSON.stringify({recipient_id:'customer-1',message_id:'meta-out-68'}),{status:200,headers:{'content-type':'application/json'}})
     return new Response(JSON.stringify({error:{message:'unexpected mock URL'}}),{status:404,headers:{'content-type':'application/json'}})
   }
@@ -56,6 +57,8 @@ test('Meta OAuth discovers Facebook and Instagram assets then connects selected 
   const crm=await request('/api/customers',{headers:auth});assert.equal(crm.body.length,1);assert.equal(crm.body[0].externalId,'customer-1')
   const facebookChannel=channels.body.find(channel=>channel.provider==='facebook'),sent=await request('/api/messages/send',{method:'POST',headers:auth,body:JSON.stringify({connectionId:facebookChannel.id,recipientId:'customer-1',text:'BOT 68 trả lời Meta'})});assert.equal(sent.status,200);assert.equal(sent.body.externalMessageId,'meta-out-68')
   const performance=await request('/api/reports/staff-performance?period=day',{headers:auth});assert.equal(performance.status,200);assert.equal(performance.body.canViewTeam,true);assert.equal(performance.body.totals.messages,1);assert.equal(performance.body.totals.customers,1);assert.equal(performance.body.rows[0].messages,1)
+  const disconnected=await request(`/api/channels/${facebookChannel.id}`,{method:'DELETE',headers:auth});assert.equal(disconnected.status,200);assert.equal(disconnected.body.providerDisconnected,true)
+  const remaining=await request('/api/channels',{headers:auth});assert.deepEqual(remaining.body.map(channel=>channel.provider),['instagram'])
 })
 test('Telegram adapter verifies bot, protects webhook, deduplicates updates and sends text',async()=>{
   const owner=await register(5),auth={authorization:`Bearer ${owner.body.token}`},token='680068:abcdefghijklmnopqrstuvwxyz_123456789'

@@ -156,6 +156,29 @@ export function createApp(config) {
     const secret=decryptSecret(row.encrypted_token,config.encryptionSecret)
     res.json({ stored:true, fingerprint:crypto.createHash('sha256').update(secret).digest('hex').slice(0,12) })
   })
+  app.delete('/api/channels/:connectionId',authenticate,ownerOnly,async(req,res,next)=>{
+    try{
+      const connection=db.prepare('SELECT * FROM channel_connections WHERE id=? AND tenant_id=?').get(req.params.connectionId,req.session.tenantId)
+      if(!connection)return res.sendStatus(404)
+      let providerDisconnected=false,warning=''
+      if(connection.provider==='facebook'){
+        try{
+          const url=new URL(`https://graph.facebook.com/${config.metaGraphVersion}/${connection.external_id}/subscribed_apps`)
+          url.search=new URLSearchParams({access_token:decryptSecret(connection.encrypted_token,config.encryptionSecret)}).toString()
+          const response=await config.fetchImpl(url,{method:'DELETE'}),body=await response.json()
+          if(!response.ok||body.success!==true)throw new Error(body.error?.message||'Meta không xác nhận hủy webhook')
+          providerDisconnected=true
+        }catch(error){warning=`Đã xóa kết nối khỏi BOT 68 nhưng Meta chưa xác nhận hủy webhook: ${error.message}`}
+      }
+      db.exec('BEGIN')
+      try{
+        db.prepare('DELETE FROM oauth_assets WHERE tenant_id=? AND provider=? AND external_id=?').run(req.session.tenantId,connection.provider,connection.external_id)
+        db.prepare('DELETE FROM channel_connections WHERE id=? AND tenant_id=?').run(connection.id,req.session.tenantId)
+        db.exec('COMMIT')
+      }catch(error){db.exec('ROLLBACK');throw error}
+      res.json({ok:true,id:connection.id,provider:connection.provider,displayName:connection.display_name,providerDisconnected,warning})
+    }catch(error){next(error)}
+  })
   app.get('/api/sync/events', authenticate, (req, res) => {
     const limit=Math.min(Number(req.query.limit)||100,500)
     const rows=db.prepare('SELECT * FROM (SELECT id,provider,event_type,external_id,payload,created_at,source_connection_id FROM sync_events WHERE tenant_id=? ORDER BY created_at DESC LIMIT ?) ORDER BY created_at').all(req.session.tenantId,limit)
@@ -245,6 +268,7 @@ export function createApp(config) {
     let connected=0;const facebookAssets=[];db.exec('BEGIN');try{for(const assetId of selected){const asset=getAsset.get(assetId,flow.id,req.session.tenantId);if(asset){upsert.run(id('chn'),req.session.tenantId,asset.provider,asset.external_id,asset.display_name,asset.encrypted_token,Date.now());if(asset.provider==='facebook')facebookAssets.push(asset);connected++}}db.prepare("UPDATE oauth_flows SET status='completed' WHERE id=?").run(flow.id);db.exec('COMMIT')}catch(error){db.exec('ROLLBACK');throw error}
     let subscribed=0;const subscriptionErrors=[]
     for(const asset of facebookAssets){try{const url=new URL(`https://graph.facebook.com/${config.metaGraphVersion}/${asset.external_id}/subscribed_apps`);url.search=new URLSearchParams({subscribed_fields:'messages,message_deliveries,message_reads,message_echoes,messaging_postbacks,messaging_optins,messaging_referrals,feed',access_token:decryptSecret(asset.encrypted_token,config.encryptionSecret)}).toString();const response=await config.fetchImpl(url,{method:'POST'});const body=await response.json();if(!response.ok||body.success!==true)throw new Error(body.error?.message||'Meta khong chap nhan dang ky webhook');subscribed++}catch(error){subscriptionErrors.push({page:asset.display_name,error:error.message})}}
+    db.prepare('DELETE FROM oauth_assets WHERE flow_id=? AND tenant_id=?').run(flow.id,req.session.tenantId)
     res.json({ok:true,connected,subscribed,subscriptionErrors})
   })
   app.post('/api/messages/send',authenticate,async(req,res,next)=>{
