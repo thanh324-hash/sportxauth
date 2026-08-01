@@ -1595,7 +1595,7 @@ function Connections({ session }: { session: ServerSession }) {
               cần thêm máy chủ HTTPS và Meta App.
             </p>
           </div>
-          <a href="https://github.com/thanh324-hash/sportxauth/releases/latest/download/BOT-68-Setup-0.10.0.exe">
+          <a href="https://github.com/thanh324-hash/sportxauth/releases/latest/download/BOT-68-Setup-latest.exe">
             Tải BOT 68 Windows
           </a>
         </div>
