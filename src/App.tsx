@@ -85,7 +85,8 @@ type Page =
   | "team"
   | "reports"
   | "connections"
-  | "settings";
+  | "settings"
+  | "support";
 const nav: Array<[Page, string, any]> = [
   ["dashboard", "Tổng quan", LayoutDashboard],
   ["inbox", "Hộp thư", Inbox],
@@ -97,6 +98,7 @@ const nav: Array<[Page, string, any]> = [
   ["reports", "Báo cáo", BarChart3],
   ["connections", "Kết nối kênh", Wifi],
   ["settings", "Cài đặt", Settings],
+  ["support", "Hỗ trợ BOT 68", CircleHelp],
 ];
 const channelIcon = (c: Channel) =>
   c === "facebook" ? (
@@ -269,7 +271,7 @@ function Sidebar({
       </button>
       <nav>
         {nav
-          .filter(([id]) => id !== "team" || session.user.role === "owner")
+          .filter(([id]) => id !== "support" && (id !== "team" || session.user.role === "owner"))
           .map(([id, label, Icon]) => (
             <button
               key={id}
@@ -292,7 +294,7 @@ function Sidebar({
             <small>Dữ liệu riêng biệt</small>
           </div>
         </div>
-        <button>
+        <button className={page === "support" ? "active" : ""} onClick={() => setPage("support")}>
           <CircleHelp />
           <span>Trợ giúp</span>
         </button>
@@ -1305,8 +1307,24 @@ function CustomerPanel({ contact }: any) {
   );
 }
 
+type SupportMessage = {id:string;sender:"user"|"support";category:string;message:string;metadata:Record<string,unknown>;userName:string;createdAt:number};
+function SupportPage({session}:{session:ServerSession}) {
+  const [messages,setMessages]=useState<SupportMessage[]>([]),[draft,setDraft]=useState(""),[category,setCategory]=useState("general"),[loading,setLoading]=useState(false),[notice,setNotice]=useState("");
+  async function load(){if(session.offline)return;try{setMessages(await apiRequest<SupportMessage[]>(session.serverUrl,"/api/support/messages",{},session.token));setNotice("")}catch(error){setNotice(error instanceof Error?error.message:"Không tải được trò chuyện hỗ trợ")}}
+  useEffect(()=>{void load();if(session.offline)return;const timer=window.setInterval(()=>void load(),5000);return()=>clearInterval(timer)},[session.serverUrl,session.token,session.offline]);
+  async function sendSupport(){const message=draft.trim();if(!message||session.offline)return;setLoading(true);try{const created=await apiRequest<SupportMessage[]>(session.serverUrl,"/api/support/messages",{method:"POST",body:JSON.stringify({message,category,platform:window.bot68?"Windows":Capacitor.isNativePlatform()?"Android":"Web",appVersion:"0.15.5",userAgent:navigator.userAgent})},session.token);setMessages(current=>[...current,...created]);setDraft("");setNotice("")}catch(error){setNotice(error instanceof Error?error.message:"Không gửi được yêu cầu hỗ trợ")}finally{setLoading(false)}}
+  return <div className="support-page">
+    <section className="support-intro"><span><CircleHelp/></span><div><h2>Hỗ trợ trực tiếp BOT 68</h2><p>Gửi lỗi ngay tại đây. BOT 68 tự đính kèm nền tảng đang dùng và giữ riêng lịch sử của cửa hàng.</p></div><button onClick={()=>void load()}><RefreshCw/> Làm mới</button></section>
+    <section className="support-chat">
+      <div className="support-messages">{messages.map(item=><div className={`support-row ${item.sender}`} key={item.id}><div><b>{item.sender==="support"?"BOT 68 Hỗ trợ":item.userName||session.user.name}</b><p>{item.message}</p><time>{new Date(item.createdAt).toLocaleString("vi-VN")}</time></div></div>)}{!messages.length&&<div className="support-empty"><CircleHelp/><b>Bạn cần BOT 68 hỗ trợ gì?</b><span>Hãy mô tả thao tác, màn hình và thông báo lỗi nhìn thấy.</span></div>}</div>
+      <div className="support-compose"><select value={category} onChange={event=>setCategory(event.target.value)}><option value="general">Hỗ trợ chung</option><option value="login">Đăng nhập</option><option value="channel">Kết nối Facebook/Instagram</option><option value="message">Gửi/nhận tin nhắn</option><option value="ai">AI trả lời</option><option value="billing">Tài khoản/gói dịch vụ</option><option value="other">Lỗi khác</option></select><textarea value={draft} onChange={event=>setDraft(event.target.value)} placeholder="Mô tả lỗi bạn đang gặp..." onKeyDown={event=>{if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();void sendSupport()}}}/><button disabled={loading||!draft.trim()||session.offline} onClick={()=>void sendSupport()}><Send/>{loading?"Đang gửi":"Gửi hỗ trợ"}</button></div>
+      {session.offline&&<div className="support-notice">Cần đăng nhập máy chủ để gửi yêu cầu hỗ trợ.</div>}{notice&&<div className="support-notice error">{notice}</div>}
+    </section>
+  </div>
+}
+
 const moduleCopy: Record<
-  Exclude<Page, "inbox">,
+  Exclude<Page, "inbox" | "support">,
   { icon: any; title: string; desc: string; stats?: string[] }
 > = {
   dashboard: {
@@ -1365,6 +1383,7 @@ function ModulePage({
   page: Exclude<Page, "inbox">;
   session: ServerSession;
 }) {
+  if (page === "support") return <SupportPage session={session} />;
   const m = moduleCopy[page];
   const Icon = m.icon;
   let content: React.ReactNode;

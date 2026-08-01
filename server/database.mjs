@@ -91,6 +91,14 @@ export function openDatabase(filename) {
       external_id TEXT NOT NULL, display_name TEXT NOT NULL, encrypted_token TEXT NOT NULL,
       parent_external_id TEXT, metadata TEXT NOT NULL DEFAULT '{}'
     );
+    CREATE TABLE IF NOT EXISTS support_messages (
+      id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      sender TEXT NOT NULL CHECK(sender IN ('user','support')),
+      category TEXT NOT NULL DEFAULT 'general', message TEXT NOT NULL,
+      metadata TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS support_messages_tenant_created ON support_messages(tenant_id, created_at);
     CREATE INDEX IF NOT EXISTS sync_events_pending ON sync_events(tenant_id, delivered_at, created_at);
     CREATE INDEX IF NOT EXISTS oauth_flows_owner ON oauth_flows(tenant_id, user_id, created_at);
     CREATE INDEX IF NOT EXISTS ai_knowledge_tenant ON ai_knowledge(tenant_id, enabled, updated_at);
